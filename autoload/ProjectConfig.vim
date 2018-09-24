@@ -20,24 +20,26 @@ function s:ApplyProjectConfigScript(full_path, project)
 		unlet l:configData.project_script
 	    endif
 
-	    if !a:project && has_key(l:config_data, file_script)
+	    if !a:project && has_key(l:configData, 'file_script')
 		if has_key(l:configData, 'exclude_list')
 		    let l:exclude_files = l:configData.exclude_list
 		else
 		    let l:exclude_files = [ ] 
 		endif
 
-		if index(l:exclude_files, fnamemodify(bufname('%'), ':t')) == -1
-		    if has_key(l:configData, 'directory_name')
-			let g:ProjectConfig_Directory = l:configData.directory_name
-		    else
-			let g:ProjectConfig_Directory = ''
-		    endif
-		    let g:ProjectConfig_Project = l:configData.project_name
+		if !!strlen(l:configData.file_script)
+		    if index(l:exclude_files, fnamemodify(bufname('%'), ':t')) == -1
+			if has_key(l:configData, 'directory_name')
+			    let g:ProjectConfig_Directory = l:configData.directory_name
+			else
+			    let g:ProjectConfig_Directory = ''
+			endif
+			let g:ProjectConfig_Project = l:configData.project_name
 
-		    source `=fnameescape(configData.file_script)`
-		    unlet g:ProjectConfig_Directory
-		    unlet g:ProjectConfig_Project
+			source `=fnameescape(l:configData.file_script)`
+			unlet g:ProjectConfig_Directory
+			unlet g:ProjectConfig_Project
+		    endif
 		endif
 	    endif
 	endif

@@ -74,7 +74,8 @@ function.
 
 Open the named project tree. The name must be a project from a previous call to
 `ProjectConfig#SetScript()` function or `:ProjectConfig`/`:ProjectConfigAdd` command. When the
-project tree is opened, the `project` script will be triggered (`:source`d).
+project tree is opened, the `project` script will be triggered (`:source`d), if the project has
+not been open before in the same Vim session.
 
 ```
  ProjectConfig::Completion(arg1, arg2, arg3)
