@@ -12,7 +12,19 @@ function s:ApplyProjectConfigScript(full_path, project)
 		    endif
 		    let g:ProjectConfig_Project = l:configData.project_name
 
-		    source `=fnameescape(configData.project_script)`
+		    if has_key(l:configData, 'cd')
+			let l:WorkingDirectory = getcwd()
+			lchdir `=fnameescape(g:ProjectConfig_Directory)`
+		    endif
+
+		    try
+			source `=fnameescape(configData.project_script)`
+		    finally
+			if has_key(l:configData, 'cd')
+			    lchdir `=fnameescape(l:WorkingDirectory)`
+			endif
+		    endtry
+
 		    unlet g:ProjectConfig_Directory
 		    unlet g:ProjectConfig_Project
 		endif
@@ -37,6 +49,7 @@ function s:ApplyProjectConfigScript(full_path, project)
 			let g:ProjectConfig_Project = l:configData.project_name
 
 			source `=fnameescape(l:configData.file_script)`
+
 			unlet g:ProjectConfig_Directory
 			unlet g:ProjectConfig_Project
 		    endif
@@ -47,6 +60,8 @@ function s:ApplyProjectConfigScript(full_path, project)
 endfunction
 
 function ProjectConfig#SetScript(project_name, ...)
+    let l:keep_pwd = 0
+
     if a:0
 	let l:project_name = a:project_name
 	let l:directory_name = a:1
@@ -60,6 +75,10 @@ function ProjectConfig#SetScript(project_name, ...)
 
 	if a:0 > 2
 	    let l:file_script = a:3
+	endif
+
+	if a:0 > 3
+	    let l:keep_pwd = a:4
 	endif
     else
 	if has('win32') || has('win64') && isdirectory(expand('~\vimfiles'))
@@ -98,6 +117,10 @@ function ProjectConfig#SetScript(project_name, ...)
 	\	  'project_script'  : !!strlen(l:project_script) ? fnamemodify(l:project_script, ':p') : ''
 	\     }
 	\ )
+
+    if !l:keep_pwd
+	let s:ProjectConfigScript[-1].cd = !0
+    endif
 endfunction
 
 function ProjectConfig#Completion(ArgLead, CmdLine, CursorPos)

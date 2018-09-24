@@ -6,7 +6,7 @@ file is opened.
 ## Installation
 
 ### Use a Vim plugin manager
-Using a plugin manager for Vim like Vundle or Pathogen is recommended. For Vundle for example 
+Using a plugin manager for Vim like Vundle or Pathogen is recommended. For Vundle for example
 you should add a line like `Plugin 'terminatorul/ProjectConfig'` to your `.vimrc` file, between
 the `vundle#begin()` and `vundle::end()` lines, then run `:PluginInstall` command in Vim.
 
@@ -24,7 +24,7 @@ Open Vim and append the following line to your `~/.vimrc` file:
 ## Usage
 
 Two kinds of vimscript files can be associated with any project tree:
-* a `project` script, that will be run the first time you `:cd ` inside the project 
+* a `project` script, that will be run the first time you `:cd ` inside the project
   directory in Vim, or the first time you `:edit` a file from the project tree
 * a `file` script, that will be run every single time you open/edit a file from the
   project tree
@@ -35,7 +35,7 @@ The `file` script has the name of the project with an appended suffix of `.files
 (`_files.vim` for Windows).
 
 ```
-ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath)
+ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath', KeepPWD)
 ProjectConfig#SetScript('Name', 'Path')
 ProjectConfig#SetScript('Path')
 ```
@@ -45,6 +45,10 @@ required argument is the `Path`, other can be omitted. If not specified, the def
 * the project `Name` is the last path component from `Path`
 * the project script is `~/.vim/project/<Name>.vim`
 * the file script is `~/.vim/project/<Name>.file.vim` if file exists, or no file script otherwise.
+* the flag to keep current directory is false, that is the project script is always run in the
+  project directory, after which the current directory is restored. Beware the file script is
+  always run in the current directory selected by the user, which can be well outside the project
+  directory!
 
 The `~/.vim/` directory is use for Linux, `~/vimfiles` for Windows. Also the file script for
 Windows has a different suffix `_files.vim` instead of `.files.vim`.
