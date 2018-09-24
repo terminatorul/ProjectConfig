@@ -10,9 +10,11 @@ function s:ApplyProjectConfigScript(full_path, project)
 		    else
 			let g:ProjectConfig_Directory = ''
 		    endif
+		    let g:ProjectConfig_Project = l:configData.project_name
 
 		    source `=fnameescape(configData.project_script)`
 		    unlet g:ProjectConfig_Directory
+		    unlet g:ProjectConfig_Project
 		endif
 
 		unlet l:configData.project_script
@@ -31,9 +33,11 @@ function s:ApplyProjectConfigScript(full_path, project)
 		    else
 			let g:ProjectConfig_Directory = ''
 		    endif
+		    let g:ProjectConfig_Project = l:configData.project_name
 
 		    source `=fnameescape(configData.file_script)`
 		    unlet g:ProjectConfig_Directory
+		    unlet g:ProjectConfig_Project
 		endif
 	    endif
 	endif

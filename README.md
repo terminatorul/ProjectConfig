@@ -52,6 +52,10 @@ Windows has a different suffix `_files.vim` instead of `.files.vim`.
 Use this function in the user `.vimrc` or `_vimrc` once for every project tree that you want to
 associate scripts with.
 
+The `Path` and `Name` values given here will be passed to the associated scripts when invoked, in
+the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
+
+
 ```
 :ProjectConfig Name Path ProjectScript FileScript
 :ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript
@@ -78,4 +82,4 @@ project tree is opened, the `project` script will be triggered (`:source`d).
 ```
 
 Return/display a list with names of all projects from previous calls to `ProjectConfig#SetScript()`
-function, or previous uses of `:ProjectConfig`/`:ProjectConfigAdd` command.
+function, or previous uses of `:ProjectConfig` or `:ProjectConfigAdd` command.
