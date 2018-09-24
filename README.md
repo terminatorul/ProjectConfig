@@ -24,9 +24,9 @@ Open Vim and append the following line to your `~/.vimrc` file:
 ## Usage
 
 Two kinds of vimscript files can be associated with any project tree:
-* a `project` script, that will be `:source`d the first time you `:cd ` inside the project 
+* a `project` script, that will be run the first time you `:cd ` inside the project 
   directory in Vim, or the first time you `:edit` a file from the project tree
-* a `file` script, that will be `:sourced`d every single time you open/edit a file from the
+* a `file` script, that will be run every single time you open/edit a file from the
   project tree
 
 By default the `project` script has the same name as the project, with `.vim` extension added,
@@ -34,9 +34,11 @@ and is searched in the `~/.vim/project/` directory (`~/vimfiles/project/` for Wi
 The `file` script has the name of the project with an appended suffix of `.files.vim`
 (`_files.vim` for Windows).
 
-### `ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath)`
-### `ProjectConfig#SetScript('Name', 'Path')`
-### `ProjectConfig#SetScript('Path')`
+```
+ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath)
+ProjectConfig#SetScript('Name', 'Path')
+ProjectConfig#SetScript('Path')
+```
 
 Call the function to associate a project tree with a project script and a file script. The only
 required argument is the `Path`, other can be omitted. If not specified, the default values are:
@@ -50,25 +52,30 @@ Windows has a different suffix `_files.vim` instead of `.files.vim`.
 Use this function in the user `.vimrc` or `_vimrc` once for every project tree that you want to
 associate scripts with.
 
-### `:ProjectConfig Name Path ProjectScript FileScript
-### `:ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript'
+```
+:ProjectConfig Name Path ProjectScript FileScript
+:ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript
+```
 
 Same as the `ProjectConfig#SetScript` function above, but since these are Vim commands they are
 only available after this plugin has been loaded by Vim, most importantly they are not
 available yet in the `_vimrc` file. Arguments other the `Path` are optional just like for the
 function.
 
-### ` ProjectConfig#FindLoad('Name')`
-### `:ProjectConfigEnter Name
-### `:ProjectConfigOpen 'Name'
+```
+ ProjectConfig#FindLoad('Name')`
+:ProjectConfigEnter Name
+:ProjectConfigOpen 'Name'
+```
 
 Open the named project tree. The name must be a project from a previous call to
 `ProjectConfig#SetScript()` function or `:ProjectConfig`/`:ProjectConfigAdd` command. When the
 project tree is opened, the `project` script will be triggered (`:source`d).
 
-
-### ` ProjectConfig::Completion(arg1, arg2, arg3)`
-### `:ProjectConfigList`
+```
+ ProjectConfig::Completion(arg1, arg2, arg3)`
+:ProjectConfigList`
+```
 
 Return/display a list with names of all projects from previous calls to `ProjectConfig#SetScript()`
 function, or previous uses of `:ProjectConfig`/`:ProjectConfigAdd` command.
