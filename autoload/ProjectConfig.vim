@@ -118,7 +118,11 @@ function ProjectConfig#FindLoad(project_name)
     for configData in s:ProjectConfigScript
 	if configData.project_name == a:project_name && strlen(configData.directory_name)
 	    cd `=fnameescape(configData.directory_name)`
-	    edit .
+	    if exists(':NERDTreeToggle')
+		:NERDTreeToggle
+	    else
+		edit .
+	    endif
 	    break
 	endif
     endfor
