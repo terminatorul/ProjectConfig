@@ -73,8 +73,8 @@ Open the named project tree. The name must be a project from a previous call to
 project tree is opened, the `project` script will be triggered (`:source`d).
 
 ```
- ProjectConfig::Completion(arg1, arg2, arg3)`
-:ProjectConfigList`
+ ProjectConfig::Completion(arg1, arg2, arg3)
+:ProjectConfigList
 ```
 
 Return/display a list with names of all projects from previous calls to `ProjectConfig#SetScript()`
