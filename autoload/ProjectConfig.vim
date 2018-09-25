@@ -1,66 +1,153 @@
 let s:ProjectConfigScript = [ ]
+let s:ProjectConfig_ApplyScript = v:false	" used to prevent recursion
+
+if !exists('g:ProjectConfig_NERDTreeIntegration')
+    let g:ProjectConfig_NERDTreeIntegration = v:true
+endif
 
 function s:ApplyProjectConfigScript(full_path, project)
-    for l:configData in s:ProjectConfigScript
-	if a:full_path =~ l:configData.pathname_pattern
-	    if has_key(l:configData, 'project_script')
-		if !!strlen(l:configData.project_script)
-		    if has_key(l:configData, 'directory_name')
-			let g:ProjectConfig_Directory = l:configData.directory_name
-		    else
-			let g:ProjectConfig_Directory = ''
-		    endif
-		    let g:ProjectConfig_Project = l:configData.project_name
+    if s:ProjectConfig_ApplyScript
+	return
+    else
+	let s:ProjectConfig_ApplyScript = v:true
 
-		    if has_key(l:configData, 'cd')
-			let l:WorkingDirectory = getcwd()
-			lchdir `=fnameescape(g:ProjectConfig_Directory)`
-		    endif
+	try
+	    for l:configData in s:ProjectConfigScript
+		if a:full_path =~ l:configData.pathname_pattern
+		    if has_key(l:configData, 'project_script')
+			if !!strlen(l:configData.project_script)
+			    if has_key(l:configData, 'directory_name')
+				let g:ProjectConfig_Directory = l:configData.directory_name
+			    else
+				let g:ProjectConfig_Directory = ''
+			    endif
+			    let g:ProjectConfig_Project = l:configData.project_name
 
-		    try
-			source `=fnameescape(configData.project_script)`
-		    finally
-			if has_key(l:configData, 'cd')
-			    lchdir `=fnameescape(l:WorkingDirectory)`
+			    if has_key(l:configData, 'cd')
+				let l:WorkingDirectory = getcwd()
+
+				if tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
+				    lchdir `=fnameescape(g:ProjectConfig_Directory)`    " Triggers ApplyProjectConfig() again
+				endif
+			    endif
+
+			    try
+				source `=fnameescape(l:configData.project_script)`
+			    finally
+				if has_key(l:configData, 'cd') && tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
+				    lchdir `=fnameescape(l:WorkingDirectory)`
+				endif
+			    endtry
+
+			    unlet g:ProjectConfig_Directory
+			    unlet g:ProjectConfig_Project
 			endif
-		    endtry
 
-		    unlet g:ProjectConfig_Directory
-		    unlet g:ProjectConfig_Project
-		endif
+			unlet l:configData.project_script
+		    endif
 
-		unlet l:configData.project_script
-	    endif
-
-	    if !a:project && has_key(l:configData, 'file_script')
-		if has_key(l:configData, 'exclude_list')
-		    let l:exclude_files = l:configData.exclude_list
-		else
-		    let l:exclude_files = [ ] 
-		endif
-
-		if !!strlen(l:configData.file_script)
-		    if index(l:exclude_files, fnamemodify(bufname('%'), ':t')) == -1
-			if has_key(l:configData, 'directory_name')
-			    let g:ProjectConfig_Directory = l:configData.directory_name
+		    if !a:project && has_key(l:configData, 'file_script')
+			if has_key(l:configData, 'exclude_list')
+			    let l:exclude_files = l:configData.exclude_list
 			else
-			    let g:ProjectConfig_Directory = ''
+			    let l:exclude_files = [ ] 
 			endif
-			let g:ProjectConfig_Project = l:configData.project_name
 
-			source `=fnameescape(l:configData.file_script)`
+			if !!strlen(l:configData.file_script)
+			    if index(l:exclude_files, fnamemodify(bufname('%'), ':t')) == -1
+				if has_key(l:configData, 'directory_name')
+				    let g:ProjectConfig_Directory = l:configData.directory_name
+				else
+				    let g:ProjectConfig_Directory = ''
+				endif
+				let g:ProjectConfig_Project = l:configData.project_name
 
-			unlet g:ProjectConfig_Directory
-			unlet g:ProjectConfig_Project
+				source `=fnameescape(l:configData.file_script)`
+
+				unlet g:ProjectConfig_Directory
+				unlet g:ProjectConfig_Project
+			    endif
+			endif
 		    endif
 		endif
+	    endfor
+	finally
+	    let s:ProjectConfig_ApplyScript = v:false
+	endtry
+    endif
+endfunction
+
+function ProjectConfig#Completion(ArgLead, CmdLine, CursorPos)
+    let l:result_lines = ''
+
+    for l:configData in s:ProjectConfigScript
+	if strlen(l:result_lines)
+	    let l:result_lines .= "\n"
+	endif
+
+	let l:result_lines .= l:configData.project_name
+    endfor
+
+    return l:result_lines
+endfunction
+
+function ProjectConfig#FindLoad(project_name)
+    for configData in s:ProjectConfigScript
+	if configData.project_name == a:project_name && strlen(configData.directory_name)
+	    cd `=fnameescape(configData.directory_name)`
+	    if g:ProjectConfig_NERDTreeIntegration && exists(':NERDTreeCWD')
+		:NERDTreeCWD
+	    else
+		edit .
 	    endif
+	    break
 	endif
     endfor
 endfunction
 
+function ProjectConfig#NERDTreeListener(event)
+    " echomsg 'Loaded NERDTree: '
+    " echo 'Absolute path     : ' . a:event.subject.AbsolutePathFor('')
+    " echo 'Slash             : ' . a:event.subject.Slash()
+    " echo 'JoinPathStrings   : ' . a:event.subject.JoinPathStrings()
+    " echo a:event.subject.getDir()
+    " echo 'str               : ' . a:event.subject.str()
+    " echo 'strTrunk          : ' . a:event.subject.strTrunk()
+    call s:ApplyProjectConfigScript(tr(a:event.nerdtree.root.path.str(), '\', '/'), !0)
+    " for key in sort(keys(a:event.subject))
+    "     echo 'Event subject key: ' . key
+    " endfor
+endfunction
+
+function s:AddNERDTreeListener()
+    if exists('g:NERDTreePathNotifier')
+	call g:NERDTreePathNotifier.AddListener('init', 'ProjectConfig#NERDTreeListener')
+    endif
+
+    if exists('b:NERDTree')
+	call s:ApplyProjectConfigScript(tr(b:NERDTree.root.path.str(), '\', '/'), !0)
+    endif
+endfunction
+
+function s:AddVimListeners()
+    if exists('s:VimListenersAdded')
+	return
+    endif
+
+    let s:VimListenersAdded = !0
+
+    augroup ProjectConfig
+	autocmd BufNewFile,BufRead * call s:ApplyProjectConfigScript(expand('%:p:gs#\#/#'), 0)
+	autocmd DirChanged	   * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), !0)
+	if g:ProjectConfig_NERDTreeIntegration
+	    autocmd VimEnter           * call s:AddNERDTreeListener()
+	endif
+	autocmd VimEnter           * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), !0)
+    augroup END
+endfunction
+
 function ProjectConfig#SetScript(project_name, ...)
-    let l:keep_pwd = 0
+    let l:keep_pwd = v:false
 
     if a:0
 	let l:project_name = a:project_name
@@ -78,10 +165,10 @@ function ProjectConfig#SetScript(project_name, ...)
 	endif
 
 	if a:0 > 3
-	    let l:keep_pwd = a:4
+	    let l:keep_pwd = !!a:4
 	endif
     else
-	if has('win32') || has('win64') && isdirectory(expand('~\vimfiles'))
+	if (has('win32') || has('win64')) && isdirectory(expand('~\vimfiles'))
 	    let l:project_script = expand('~\vimfiles\project\' . l:project_name . '.vim')
 	else
 	    let l:project_script = expand('~/.vim/project/' . l:project_name . '.vim')
@@ -89,13 +176,9 @@ function ProjectConfig#SetScript(project_name, ...)
     endif
 
     if !exists('l:file_script')
-	if has('win32') || has('win64')
-	    if filereadable(fnamemodify(l:project_script, ':r') . '_files.vim')
+	if (has('win32') || has('win64')) && filereadable(fnamemodify(l:project_script, ':r') . '_files.vim')
 		let l:file_script = fnamemodify(l:project_script, ':r') . '_files.vim'
-	    endif
-	endif
-
-	if !exists('l:file_script')
+	else
 	    if filereadable(fnamemodify(l:project_script, ':r') . '.files.vim')
 		let l:file_script = fnamemodify(l:project_script, ':r') . '.files.vim'
 	    else
@@ -119,40 +202,13 @@ function ProjectConfig#SetScript(project_name, ...)
 	\ )
 
     if !l:keep_pwd
-	let s:ProjectConfigScript[-1].cd = !0
+	let s:ProjectConfigScript[-1].cd = v:true
     endif
+
+    call s:AddVimListeners()
 endfunction
 
-function ProjectConfig#Completion(ArgLead, CmdLine, CursorPos)
-    let l:result_lines = ''
-
-    for l:configData in s:ProjectConfigScript
-	if strlen(l:result_lines)
-	    let l:result_lines .= "\n"
-	endif
-
-	let l:result_lines .= l:configData.project_name
-    endfor
-
-    return l:result_lines
+function g:ProjectConfig_DebugVariables()
+    let g:ProjectConfigScript = s:ProjectConfigScript
+    let g:ProjectConfig_ApplyScript = s:ProjectConfig_ApplyScript
 endfunction
-
-function ProjectConfig#FindLoad(project_name)
-    for configData in s:ProjectConfigScript
-	if configData.project_name == a:project_name && strlen(configData.directory_name)
-	    cd `=fnameescape(configData.directory_name)`
-	    if exists(':NERDTreeToggle')
-		:NERDTreeToggle
-	    else
-		edit .
-	    endif
-	    break
-	endif
-    endfor
-endfunction
-
-augroup ProjectConfig
-    autocmd BufNewFile,BufRead * call s:ApplyProjectConfigScript(expand('%:p:gs#\#/#'), 0)
-    autocmd DirChanged	       * call s:ApplyProjectConfigScript(fnamemodify(getcwd(), ':gs#\#/#'), !0)
-    autocmd VimEnter           * call s:ApplyProjectConfigScript(fnamemodify(getcwd(), ':gs#\#/#'), !0)
-augroup END
