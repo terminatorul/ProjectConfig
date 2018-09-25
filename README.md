@@ -38,7 +38,7 @@ The `file` script has the name of the project with an appended suffix of `.files
 call ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath', KeepPWD)
 call ProjectConfig#SetScript('Name', 'Path')
 call ProjectConfig#SetScript('Path')
-
+```
 
 Call the function to associate a project tree with a project script and a file script. The only
 required argument is the `Path`, other can be omitted. If not specified, the default values are:
