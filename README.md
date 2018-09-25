@@ -1,7 +1,11 @@
 # ProjectConfig plugin for Vim
 
-Allows you to load a Vim script when entering a project tree or every time a buffer from that
-file is opened.
+Allows you to load a Vim script when entering a project tree or every time you edit a file from
+that tree.
+
+It is similar to other "project settings" addons, but infers the project directory from local
+`.vimrc` settings, not by scanning every path component up to the file system root, every time you
+edit a new file.
 
 ## Installation
 
@@ -61,12 +65,12 @@ the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
 
 ```
 :ProjectConfig Name Path ProjectScript FileScript
-:ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript
+:ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript'
 ```
 
 Same as the `ProjectConfig#SetScript` function above. But since these are Vim commands, they are
 only available after the plugin has been loaded by Vim, that is they are not available yet in
-the `_vimrc` file. Arguments other the `Path` are optional, like they are for the function.
+the `.vimrc` file. Arguments other the `Path` are optional, like they are for the function.
 
 ```
 :call ProjectConfig#FindLoad('Name')
@@ -74,14 +78,14 @@ the `_vimrc` file. Arguments other the `Path` are optional, like they are for th
 :ProjectConfigOpen 'Name'
 ```
 
-Open the named project tree. Uses NERDtreeCWD to open the directory if available. The name must be
+Open the named project tree. Uses `:NERDTreeCWD` to open the directory if available. The name must be
 a project from a previous call to `ProjectConfig#SetScript()` function or
 `:ProjectConfig`/`:ProjectConfigAdd` command. When the project tree is opened, the `project`
 script will be triggered (`:source`d), if the project has not been open before in the same Vim
 session.
 
 ```
-:call ProjectConfig::Completion(arg1, arg2, arg3)
+:call ProjectConfig::Completion(v:null, v:null, v:null)
 :ProjectConfigList
 ```
 
@@ -93,5 +97,5 @@ g:ProjectConfig_NERDTreeIntegration
 ```
 
 By default ProjectConfig knows when you use NERDTree plugin to open a project directory, and will
-trigger the project script (if needed) when that happens. Set this variable to v:false to prevent
-integration with NERDTree plugin.
+trigger the project script (if needed) when that happens. Set this variable to `v:false` to
+prevent integration with NERDTree plugin.
