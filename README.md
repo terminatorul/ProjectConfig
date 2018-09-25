@@ -35,10 +35,10 @@ The `file` script has the name of the project with an appended suffix of `.files
 (`_files.vim` for Windows).
 
 ```
-ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath', KeepPWD)
-ProjectConfig#SetScript('Name', 'Path')
-ProjectConfig#SetScript('Path')
-```
+call ProjectConfig#SetScript('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath', KeepPWD)
+call ProjectConfig#SetScript('Name', 'Path')
+call ProjectConfig#SetScript('Path')
+
 
 Call the function to associate a project tree with a project script and a file script. The only
 required argument is the `Path`, other can be omitted. If not specified, the default values are:
@@ -47,14 +47,13 @@ required argument is the `Path`, other can be omitted. If not specified, the def
 * the file script is `~/.vim/project/<Name>.file.vim` if file exists, or no file script otherwise.
 * the flag to keep current directory is false, that is the project script is always run in the
   project directory, after which the current directory is restored. Beware the file script is
-  always run in the current directory selected by the user, which can be well outside the project
-  directory!
+  always run in the user current directory, which can well be outside the project!
 
-The `~/.vim/` directory is use for Linux, `~/vimfiles` for Windows. Also the file script for
+The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. Also the file script for
 Windows has a different suffix `_files.vim` instead of `.files.vim`.
 
-Use this function in the user `.vimrc` or `_vimrc` once for every project tree that you want to
-associate scripts with.
+Use this function in the user `.vimrc` or `_vimrc`, once for every project tree that you want to
+have setup scripts.
 
 The `Path` and `Name` values given here will be passed to the associated scripts when invoked, in
 the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
@@ -65,26 +64,34 @@ the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
 :ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript
 ```
 
-Same as the `ProjectConfig#SetScript` function above, but since these are Vim commands they are
-only available after this plugin has been loaded by Vim, most importantly they are not
-available yet in the `_vimrc` file. Arguments other the `Path` are optional just like for the
-function.
+Same as the `ProjectConfig#SetScript` function above. But since these are Vim commands, they are
+only available after the plugin has been loaded by Vim, that is they are not available yet in
+the `_vimrc` file. Arguments other the `Path` are optional, like they are for the function.
 
 ```
- ProjectConfig#FindLoad('Name')`
+:call ProjectConfig#FindLoad('Name')
 :ProjectConfigEnter Name
 :ProjectConfigOpen 'Name'
 ```
 
-Open the named project tree. The name must be a project from a previous call to
-`ProjectConfig#SetScript()` function or `:ProjectConfig`/`:ProjectConfigAdd` command. When the
-project tree is opened, the `project` script will be triggered (`:source`d), if the project has
-not been open before in the same Vim session.
+Open the named project tree. Uses NERDtreeCWD to open the directory if available. The name must be
+a project from a previous call to `ProjectConfig#SetScript()` function or
+`:ProjectConfig`/`:ProjectConfigAdd` command. When the project tree is opened, the `project`
+script will be triggered (`:source`d), if the project has not been open before in the same Vim
+session.
 
 ```
- ProjectConfig::Completion(arg1, arg2, arg3)
+:call ProjectConfig::Completion(arg1, arg2, arg3)
 :ProjectConfigList
 ```
 
 Return/display a list with names of all projects from previous calls to `ProjectConfig#SetScript()`
 function, or previous uses of `:ProjectConfig` or `:ProjectConfigAdd` command.
+
+```
+g:ProjectConfig_NERDTreeIntegration
+```
+
+By default ProjectConfig knows when you use NERDTree plugin to open a project directory, and will
+trigger the project script (if needed) when that happens. Set this variable to v:false to prevent
+integration with NERDTree plugin.

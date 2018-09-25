@@ -106,17 +106,7 @@ function ProjectConfig#FindLoad(project_name)
 endfunction
 
 function ProjectConfig#NERDTreeListener(event)
-    " echomsg 'Loaded NERDTree: '
-    " echo 'Absolute path     : ' . a:event.subject.AbsolutePathFor('')
-    " echo 'Slash             : ' . a:event.subject.Slash()
-    " echo 'JoinPathStrings   : ' . a:event.subject.JoinPathStrings()
-    " echo a:event.subject.getDir()
-    " echo 'str               : ' . a:event.subject.str()
-    " echo 'strTrunk          : ' . a:event.subject.strTrunk()
-    call s:ApplyProjectConfigScript(tr(a:event.nerdtree.root.path.str(), '\', '/'), !0)
-    " for key in sort(keys(a:event.subject))
-    "     echo 'Event subject key: ' . key
-    " endfor
+    call s:ApplyProjectConfigScript(tr(a:event.nerdtree.root.path.str(), '\', '/'), v:true)
 endfunction
 
 function s:AddNERDTreeListener()
@@ -125,7 +115,7 @@ function s:AddNERDTreeListener()
     endif
 
     if exists('b:NERDTree')
-	call s:ApplyProjectConfigScript(tr(b:NERDTree.root.path.str(), '\', '/'), !0)
+	call s:ApplyProjectConfigScript(tr(b:NERDTree.root.path.str(), '\', '/'), v:true)
     endif
 endfunction
 
@@ -134,15 +124,15 @@ function s:AddVimListeners()
 	return
     endif
 
-    let s:VimListenersAdded = !0
+    let s:VimListenersAdded = v:true 
 
     augroup ProjectConfig
-	autocmd BufNewFile,BufRead * call s:ApplyProjectConfigScript(expand('%:p:gs#\#/#'), 0)
-	autocmd DirChanged	   * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), !0)
+	autocmd BufNewFile,BufRead * call s:ApplyProjectConfigScript(expand('%:p:gs#\#/#'), v:false)
+	autocmd DirChanged	   * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), v:true)
 	if g:ProjectConfig_NERDTreeIntegration
 	    autocmd VimEnter           * call s:AddNERDTreeListener()
 	endif
-	autocmd VimEnter           * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), !0)
+	autocmd VimEnter           * call s:ApplyProjectConfigScript(tr(getcwd(), '\', '/'), v:true)
     augroup END
 endfunction
 
