@@ -4,8 +4,8 @@ Allows you to load a Vim script when entering a project tree or every time you e
 that tree.
 
 It is similar to other "project settings" addons, but infers the project directory from local
-`.vimrc` settings, not by scanning every path component up to the file system root, every time you
-edit a new file.
+`.vimrc` settings, not by scanning every path component for several "marker" files, up to the file
+system root, every time you `:edit` something.
 
 ## Installation
 
@@ -53,11 +53,11 @@ required argument is the `Path`, other can be omitted. If not specified, the def
   project directory, after which the current directory is restored. Beware the file script is
   always run in the user current directory, which can well be outside the project!
 
-The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. Also the file script for
-Windows has a different suffix `_files.vim` instead of `.files.vim`.
+The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. The file script for
+Linxu has a default suffix of `.files.vim`, and `_files.vim` for Windows.
 
-Use this function in the user `.vimrc` or `_vimrc`, once for every project tree that you want to
-have setup scripts.
+Use this function in your local  `.vimrc` or `_vimrc`, once for every project tree that you want
+to have setup scripts.
 
 The `Path` and `Name` values given here will be passed to the associated scripts when invoked, in
 the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
