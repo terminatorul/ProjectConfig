@@ -112,6 +112,7 @@ endfunction
 function s:AddNERDTreeListener()
     if exists('g:NERDTreePathNotifier')
 	call g:NERDTreePathNotifier.AddListener('init', 'ProjectConfig#NERDTreeListener')
+	call g:NERDTreePathNotifier.AddListener('refresh', 'ProjectConfig#NERDTreeListener')
     endif
 
     if exists('b:NERDTree')
