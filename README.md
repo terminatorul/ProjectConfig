@@ -4,8 +4,8 @@ Allows you to load a Vim script when entering a project tree or every time you e
 that tree.
 
 It is similar to other "project settings" addons, but infers the project directory from local
-`.vimrc` settings, not by scanning every path component for several "marker" files, up to the file
-system root, every time you `:edit` something.
+`.vimrc` settings, not by scanning every path component for several "marker" files (`.project`,
+`.root`, `.git`), up to the file system root, every time you `:edit` something.
 
 ## Installation
 
@@ -20,9 +20,20 @@ terminatorul/ProjectConfig, then click on Releases). Open the `.vmb` file
 with Vim and run `:source %`
 
 ### Use a Vim plugin manager
-Using a plugin manager for Vim like Vundle or Pathogen is recommended. For Vundle for example
-you should add a line like `Plugin 'terminatorul/ProjectConfig'` to your `.vimrc` file, between
-the `vundle#begin()` and `vundle::end()` lines, then run `:PluginInstall` command in Vim.
+Using a plugin manager for Vim like Vundle or Pathogen is recommended. For
+Vundle you should add some lines similar to the following to your local `.vimrc`
+file:
+```
+    call vundle#begin()
+
+	#
+	# .. other plugins you use with Vundle
+	#
+
+	Plugin 'terminatorul/ProjectConfig
+    call vundle#end()
+```
+then run `:PluginInstall` command in Vim.
 
 ### Manual commands
 Run in a console:

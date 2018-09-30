@@ -5,6 +5,10 @@ Run a project specific Vim script when working with your project tree.
 Allows you to load a Vim script when entering a project tree or every time you
 edit a file from that tree.
 
+It is similar to other "project settings" addons, but infers the project
+directory from local `.vimrc` settings, not by scanning every path component for
+several "marker" files (`.project`, `.root`, `.git`, ...), up to the file system root,
+every time you |:edit| something.
 ================================================================================
 
 						   	*ProjectConfig-install*
@@ -19,7 +23,7 @@ Use Vimball release~
 
 Download the vimball release from Github (search for project
 terminatorul/ProjectConfig, then click on Releases). Open the `.vmb` file
-with Vim and run `:source %`
+with Vim and run |:source| `%`
 
 Use a Vim plugin manager~
 
@@ -34,7 +38,7 @@ file:
 	#
 
 	Plugin 'terminatorul/ProjectConfig
-    call vundle::end()
+    call vundle#end()
 <
 then run `:PluginInstall` command in Vim.
 
