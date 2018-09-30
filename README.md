@@ -9,6 +9,16 @@ system root, every time you `:edit` something.
 
 ## Installation
 
+Installation should be easy. The plugin should be found at: [terminatorul/ProjectConfig](https://github.org/terminatorul/ProjectConfig)
+
+Depending on how you use Vim, you can choose one of the options below:
+
+### Use Vimball release
+
+Download the vimball release from Github (search for project
+terminatorul/ProjectConfig, then click on Releases). Open the `.vmb` file
+with Vim and run `:source %`
+
 ### Use a Vim plugin manager
 Using a plugin manager for Vim like Vundle or Pathogen is recommended. For Vundle for example
 you should add a line like `Plugin 'terminatorul/ProjectConfig'` to your `.vimrc` file, between
@@ -54,7 +64,7 @@ required argument is the `Path`, other can be omitted. If not specified, the def
   always run in the user current directory, which can well be outside the project!
 
 The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. The file script for
-Linxu has a default suffix of `.files.vim`, and `_files.vim` for Windows.
+Linux has a default suffix of `.files.vim`, and `_files.vim` for Windows.
 
 Use this function in your local  `.vimrc` or `_vimrc`, once for every project tree that you want
 to have setup scripts.
@@ -92,6 +102,7 @@ session.
 Return/display a list with names of all projects from previous calls to `ProjectConfig#SetScript()`
 function, or previous uses of `:ProjectConfig` or `:ProjectConfigAdd` command.
 
+### Configuration
 ```
 g:ProjectConfig_NERDTreeIntegration
 ```
@@ -99,3 +110,14 @@ g:ProjectConfig_NERDTreeIntegration
 By default ProjectConfig knows when you use NERDTree plugin to open a project directory, and will
 trigger the project script (if needed) when that happens. Set this variable to `v:false` to
 prevent integration with NERDTree plugin.
+
+```
+g:ProjectConfig_PluginLoaded
+```
+Set to `v:true` after the plugin loads. You can set this to `v:true` in your local
+.`vimrc` file to prevent the plugin from loading (that is, to disable
+ProjectConfig plugin, but still keep it installed). As expected, autoload
+functions like `ProjectConfig#SetScript()` above will still be available. What
+will be disabled are the Vim commands `:ProjectConfig`, `:ProjectConfigAdd`,
+`:ProjectConfigEnter`, `:ProjectConfigOpen`, `:ProjectConfigList`.
+
