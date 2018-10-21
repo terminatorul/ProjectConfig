@@ -15,35 +15,37 @@ function s:ApplyProjectConfigScript(full_path, project)
 	    for l:configData in s:ProjectConfigScript
 		if a:full_path =~ l:configData.pathname_pattern
 		    if has_key(l:configData, 'project_script')
-			if !!strlen(l:configData.project_script)
-			    if has_key(l:configData, 'directory_name')
-				let g:ProjectConfig_Directory = l:configData.directory_name
-			    else
-				let g:ProjectConfig_Directory = ''
-			    endif
-			    let g:ProjectConfig_Project = l:configData.project_name
-
-			    if has_key(l:configData, 'cd')
-				let l:WorkingDirectory = getcwd()
-
-				if tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
-				    lchdir `=fnameescape(g:ProjectConfig_Directory)`    " Triggers ApplyProjectConfig() again
+			try
+			    if !!strlen(l:configData.project_script)
+				if has_key(l:configData, 'directory_name')
+				    let g:ProjectConfig_Directory = l:configData.directory_name
+				else
+				    let g:ProjectConfig_Directory = ''
 				endif
-			    endif
+				let g:ProjectConfig_Project = l:configData.project_name
 
-			    try
-				source `=fnameescape(l:configData.project_script)`
-			    finally
-				if has_key(l:configData, 'cd') && tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
-				    lchdir `=fnameescape(l:WorkingDirectory)`
+				if has_key(l:configData, 'cd')
+				    let l:WorkingDirectory = getcwd()
+
+				    if tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
+					lchdir `=fnameescape(g:ProjectConfig_Directory)`    " Triggers ApplyProjectConfig() again
+				    endif
 				endif
-			    endtry
 
-			    unlet g:ProjectConfig_Directory
-			    unlet g:ProjectConfig_Project
-			endif
+				try
+				    source `=fnameescape(l:configData.project_script)`
+				finally
+				    if has_key(l:configData, 'cd') && tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
+					lchdir `=fnameescape(l:WorkingDirectory)`
+				    endif
+				endtry
 
-			unlet l:configData.project_script
+				unlet g:ProjectConfig_Directory
+				unlet g:ProjectConfig_Project
+			    endif
+			finally
+			    unlet l:configData.project_script
+			endtry
 		    endif
 
 		    if !a:project && has_key(l:configData, 'file_script')
