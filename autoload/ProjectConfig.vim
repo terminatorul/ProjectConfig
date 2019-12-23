@@ -52,7 +52,7 @@ function s:ApplyProjectConfigScript(full_path, project)
 			if has_key(l:configData, 'exclude_list')
 			    let l:exclude_files = l:configData.exclude_list
 			else
-			    let l:exclude_files = [ ] 
+			    let l:exclude_files = [ ]
 			endif
 
 			if !!strlen(l:configData.file_script)
