@@ -60,12 +60,12 @@ Usage~
 Two kinds of vimscript files can be associated with any project tree:
 * a `project` script, that will be run the first time you `:cd ` inside the project
   directory in Vim, or the first time you `:edit` a file from the project tree
-* a `file` script, that will be run every single time you open/edit a file from
+* a `files` script, that will be run every single time you open/edit a file from
   the project tree
 
-By default the `project` script has the same name as the project, with `.vim` 
+By default the `project` script has the same name as the project, with `.vim`
 extension added, and is searched in the `~/.vim/project/` directory
-(`~/vimfiles/project/` for Windows). The `file` script has the name of the project
+(`~/vimfiles/project/` for Windows). The `files` script has the name of the project
 with an appended suffix of `.files.vim` (`_files.vim` for Windows).
 
 						      *ProjectConfig#SetScript()*
@@ -81,7 +81,7 @@ script. The only required argument is the `Path`, other can be omitted. If not
 specified, the default values are:
 * the project `Name` is the last path component from `Path`
 * the project script is `~/.vim/project/<Name>.vim`
-* the file script is `~/.vim/project/<Name>.file.vim` if file exists, or no file
+* the file script is `~/.vim/project/<Name>.files.vim` if file exists, or no file
   script otherwise.
 * the flag to keep current directory is false, that is the project script is
   always run in the project directory, after which the current directory is
@@ -102,8 +102,8 @@ when invoked, in the global variables `g:ProjectConfig_Directory` and
 							         *:ProjectConfig*
 							      *:ProjectConfigAdd*
 >
- :ProjectConfig Name Path ProjectScript FileScript
- :ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript'
+ :ProjectConfig Name Path ProjectScript FilesScript
+ :ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FilesScript'
 <
 
 Same as the `ProjectConfig#SetScript` function above. But since these are Vim
@@ -158,5 +158,176 @@ ProjectConfig plugin, but still keep it installed). As expected, autoload
 functions like |ProjectConfig#SetScript()| above will still be available. What
 will be disabled are the Vim commands |:ProjectConfig|, |:ProjectConfigAdd|,
 |:ProjectConfigEnter|, |:ProjectConfigOpen|, |:ProjectConfigList|.
+
+================================================================================
+ProjectConfig API~
+							       *ProjectConfig-API*
+
+ProjectConfig plugin exposes a small set of functions, intended for use by the
+project script, or the files script. Currently this API is intended to support
+generation of tag files from the project source files, to enable source code
+navigation in Vim.
+
+The project script should create function references for the frequently used
+functions exposed here, for example:
+>
+  :let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
+>
+The above is an easy way to make the function name shorter.
+					        *ProjectConfig_DirectorySeparator*
+>
+ g:ProjectConfig_DirectorySeparator
+ :let s:sep = g:ProjectConfig_DirectorySeparator
+<
+The separator character, to be used between path components of the files system
+path (like an absolute directory name or file name). The value is set based on
+the availability of the &shellslash Vim option. Should be backslash on
+Windows system and (forward) slash otherwise.
+
+							  *ProjectConfig_JoinPath*
+>
+ g:ProjectConfig_JoinPath(...)
+>
+Create a filesystem path from a list of path components, using the slash or
+backslash character, as expected for the curent system ('\' for Windows, '/'
+otherwise). Beware the `:autocmd` Vim command always expects (forward) slash
+characters for the buffer name pattern.
+
+						       *ProjectConfig_ListCompare*
+>
+ function g:ProjectConfig_ListCompare(list1, list2)
+>
+>
+Simple utility function to compare to Vim lists element by element, and return
+-1, 0, or 1 to indicate list1 is less, equal, or greater then list2.
+						 *ProjectConfig_DefaultSDKVersion*
+>
+ const g:ProjectConfig_DefaultSDKVersion =
+	    \#{
+	    \	VS:  #{ Release: '*', Product: '*', Tools_Version: '*' },
+	    \	SDK: #{ Platform_Version: '[0-9]*', Version: '*' }
+	    \ }
+>
+
+Dictionary with the default values and with the expected keys for
+`g:ProjectConfig_MS_SDK_UCRT_Module()`. Users can declare a similirar dictionary
+to call this function, and can use the desired values for Visual Studio
+Release (e.g. 2019, 2022, ...), Product ('Community', 'Professional',
+'Enterprise'), toolset version, Windows SDK version, etc.
+					        *ProjectConfig_MS_SDK_UCRT_Module*
+>
+ g:ProjectConfig_MS_SDK_UCRT_Module(version = g:ProjectConfig_DefaultSDKVersion)
+>
+Create a project module with the expected include files and the expected ctags
+options to use for running ctags on Windows SDK and Visual C++ (with standard
+C++ libary). The Windows Universal CRT (C Run-Time library) is included in the
+Windows SDK from Microsoft.
+							   *ProjectConfig_Modules*
+>
+ let g:ProjectConfig_Modules = { }
+>
+Internal dictionary with project configuration data (list of source directories,
+include directory, ctags option) for all modules for all projects. Included for
+exposition only, should not be modified directly.
+
+						     *ProjectConfig_Tags_Directory*
+>
+ g:ProjectConfig_Tags_Directory = '.tags'
+>
+Default subdirectory within the current project, to hold the tag files for the
+project modules. Modules marked external will also generated tag files in the
+subdirectory by default.
+							 *ProjectConfig_AddModule*
+>
+ g:ProjectConfig_AddModule(mod)
+>
+Create and add a new project module to the module list. A project module
+definition is a dictionary with the following keys:
+
+  - "dir" for one (or more) base directories for the module
+  - "src" for source directories
+  - "inc" for include directories
+  - "tags" for the name of the tags file for the modules
+  - "ctags_args" for extra arguments to ctags command
+  - "deps" for a list of dependency module names. Dependency modules should be
+    added before they are used.
+  - "external" to indicate a module that represents external libraries. These
+    are configured last on the 'path' and 'tags' options, and after first build
+    they do not need to regenerated the tags by default.
+
+Any of the above entries can be a string or a list, and this function will
+convert a string to a one-element list if needed.
+
+The project config script (`ProjectConfig#SetScript`) should define the modules
+according to the project settings, build options and external libraries...
+
+						   *ProjectConfig_CTagsCxxOptions*
+>
+ g:ProjectConfig_CTagsCxxOptions
+>
+A set of default options for external ctags command, that is suitable for C and
+C++ source files. These default command line options can help C and C++
+developers with code browsing. Using this is optional, but it can help users who
+want to generated tags, but do not want to go into the details of ctags command
+line.
+
+						       *ProjectConfig_ShellEscape*
+>
+ g:ProjectConfig_ShellEscape(arg)
+>
+Simple utility function, based on Vim `shellesscape()` function, to escape a
+command line arguments for use with the shell. It will only call `shellescape()`
+if the argument includes spaces or special characters, and for Windows also
+takes care of a special case when quoting "C:\Program Files\" for example
+actually results in the closing quote being escaped by the backslash character.
+So instead the function will return the argument escaped as "C:\Program Files"\.
+
+						    *ProjectConfig_SetConfigEntry*
+>
+ g:ProjectConfig_SetConfigEntry(name, value)
+>
+Sets configuration information for the current project, to be used later by the
+API functions. Currently the only configuration information is "ctags_args",
+with a list of additional arguments for ctags command, to be used for all the
+modules in the current project.
+
+						         *ProjectConfig_BuildTags*
+>
+ g:ProjectConfig_BuildTags(project, module, ...)
+>
+Invoke ctags command using the shell, to generate tags for the given modules
+(plus dependency modules) from the given project. The modules must be already
+added to the project configuration by calling `ProjectConfig_AddModule`. The tag
+files for modules marked external, that are already generated, will not be
+regenerated.  Non-external modules will regenerate their tags.
+
+						      *ProjectConfig_BuildAllTags*
+>
+ g:ProjectConfig_BuildAllTags(project, module, ...)
+>
+Invoke ctags command using the shell, to generated the tag files for given
+modules (plus dependency modules) from the given project. All modules, both
+marked external and not external, will regenerated the tag files.
+
+					        *ProjectConfig_EnableReTagCommand*
+>
+ g:ProjectConfig_EnableReTagCommand(module, ...)
+>
+Create new Vim `:command`s, based on the current project name in
+`g:ProjectConfig_Project`, of the form:
+  :command ReTagNvStrapsConfig
+  :command ReTagNvStrapsConfigAll
+that will invoke the above functions `g:ProjectConfig_BuildTags` as needed to
+regenerate tag files for the current project.
+
+						     *ProjectConfig_EnableVimTags*
+>
+ g:ProjectConfig_EnableVimTags(module, ...)
+>
+Setup the 'tags' option in Vim to include the tag file for the given project
+modules, plus and dependency modules, and takes care to set up each module
+according to the the module base directory, source directories and include
+directories.  The modules should be added with `g:ProjectConfig_AddModule()`
+before this function can be used.
 
  vim:ft=help:tw=80:ts=8:

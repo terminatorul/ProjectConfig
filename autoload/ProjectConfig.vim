@@ -127,7 +127,7 @@ function s:AddVimListeners()
 	return
     endif
 
-    let s:VimListenersAdded = v:true 
+    let s:VimListenersAdded = v:true
 
     augroup ProjectConfig
 	autocmd BufNewFile,BufRead * call s:ApplyProjectConfigScript(expand('%:p:gs#\#/#'), v:false)
@@ -183,7 +183,7 @@ function ProjectConfig#SetScript(project_name, ...)
     call add
 	\ (
 	\     s:ProjectConfigScript,
-	\ 
+	\
 	\     {
 	\	  'project_name'    : l:project_name,
 	\	  'directory_name'  : fnamemodify(l:directory_name, ':p:gs#\#/#:s#/$##'),
