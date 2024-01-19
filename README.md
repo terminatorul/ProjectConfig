@@ -1,11 +1,12 @@
 # ProjectConfig plugin for Vim
 
-Allows you to load a Vim script when entering a project tree or every time you edit a file from
+Allows you to load a Vim script when entering a project tree, and when editing files from
 that tree.
 
-It is similar to other "project settings" addons, but infers the project directory from local
-`.vimrc` settings, not by scanning every path component for several "marker" files (`.project`,
-`.root`, `.git`), up to the file system root, every time you `:edit` something.
+It is similar to other "project settings" addons, but it finds the project base directory
+using settings from local  `.vimrc` file, and not by scanning every path component for
+"marker" files (`.project`, `.root`, `.git`), up to the file system root, every time you
+`:edit` something.
 
 ## Installation
 
