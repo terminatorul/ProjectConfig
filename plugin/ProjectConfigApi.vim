@@ -158,8 +158,8 @@ function g:ProjectConfig_MS_SDK_UCRT_Module(version = g:ProjectConfig_DefaultSDK
 
 	eval [ l:auto_cmd ]->autocmd_add()
 
-	for inc in [ 'ucrt', 'shared', 'um', 'winrt', 'cppwinrt' ]
-	    call extend(l:SDK_UCRT.inc,  glob(s:Join_Path(l:SDK_UCRT.dir[1], inc), v:true, v:true))
+	for l:inc in [ 'ucrt', 'shared', 'um', 'winrt', 'cppwinrt' ]
+	    call extend(l:SDK_UCRT.inc,  glob(s:Join_Path(l:SDK_UCRT.dir[1], l:inc), v:true, v:true))
 	endfor
     endif
 
@@ -179,6 +179,10 @@ let g:ProjectConfig_Modules = { }
 
 if !exists('g:ProjectConfig_Tags_Directory')
     let g:ProjectConfig_Tags_Directory = '.tags'
+endif
+
+if !exists('g:ProjectConfig_CleanPathOption')
+    let g:ProjectConfig_CleanPathOption = v:true
 endif
 
 function g:ProjectConfig_AddCurrentProject()
@@ -403,25 +407,35 @@ function g:ProjectConfig_EnableReTagCommand(module, ...)
     execute "command ReTag" . g:ProjectConfig_Project . "All call g:ProjectConfig_BuildAllTags('" . join([ g:ProjectConfig_Project, a:module ] + a:000, "', '") . "')"
 endfunction
 
-function s:AppendGlobalVimTags(module_list, external_modules, mod)
+function s:AppendGlobalVimTagsAndPath(module_list, external_modules, mod)
     if a:module_list->index(a:mod.name) < 0
 	for l:dependency_module in a:mod.deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		call s:AppendGlobalVimTags(a:module_list, a:external_modules, l:dep_mod)
+		call s:AppendGlobalVimTagsAndPath(a:module_list, a:external_modules, l:dep_mod)
 	    endif
 	endfor
 
 	if !!a:mod.external == !!a:external_modules
-	    execute 'set tags ^=' . a:mod.tags->fnameescape()->substitute('\V,', '\\\\\\,', 'g')
+	    set path-=.
+
+	    for l:inc_dir in reverse(a:mod.inc)
+		execute 'set path-=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\\\,', 'g')
+		execute 'set path^=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\\\,', 'g')
+	    endfor
+
+	    set path^=.
+
+	    execute 'set tags ^=' . a:mod.tags->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\\\,', 'g')
 	    eval a:module_list->add(a:mod.name)
 	endif
     endif
 endfunction
 
-function s:Module_Tags_List_Per_Level(tags_list, current_depth_level, target_depth_level, external_modules, mod)
+function s:Module_Inc_And_Tags_List_Per_Level(inc_list, tags_list, current_depth_level, target_depth_level, external_modules, mod)
     if a:current_depth_level == a:target_depth_level
 	if !!a:mod.external == !!a:external_modules && a:tags_list->index(a:mod.name) < 0
+	    eval a:inc_list->extend(a:mod.inc)
 	    eval a:tags_list->add(a:mod.tags)
 	endif
 
@@ -432,7 +446,7 @@ function s:Module_Tags_List_Per_Level(tags_list, current_depth_level, target_dep
 	for l:dependency_module in a:mod.deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		let l:level_reached = s:Module_Tags_List_Per_Level(a:tags_list, a:current_depth_level + 1, a:target_depth_level, a:external_modules, l:dep_mod)
+		let l:level_reached = s:Module_Inc_And_Tags_List_Per_Level(a:inc_list, a:tags_list, a:current_depth_level + 1, a:target_depth_level, a:external_modules, l:dep_mod)
 		let l:depth_level_reached = l:depth_level_reached && l:level_reached
 	    endif
 	endfor
@@ -441,32 +455,35 @@ function s:Module_Tags_List_Per_Level(tags_list, current_depth_level, target_dep
     endif
 endfunction
 
-function s:Module_Tags_List(external_modules, mod)
+function s:Module_Inc_And_Tags_List(external_modules, mod)
     let l:depth_level = 0
     let l:tags_list = [ ]
+    let l:inc_list = [ ]
 
-    while s:Module_Tags_List_Per_Level(l:tags_list, 0, l:depth_level, a:external_modules, a:mod)
+    while s:Module_Inc_And_Tags_List_Per_Level(l:inc_list, l:tags_list, 0, l:depth_level, a:external_modules, a:mod)
 	let l:depth_level = l:depth_level + 1
     endwhile
 
-    return l:tags_list
+    return [ l:inc_list, l:tags_list ]
 endfunction
 
-function s:SetupLocalVimTags(module_list, mod)
+function s:SetupLocalVimTagsAndPath(module_list, mod)
     if a:module_list->index(a:mod.name) < 0
 	for l:dependency_module in a:mod.deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		call s:SetupLocalVimTags(a:module_list, l:dep_mod)
+		call s:SetupLocalVimTagsAndPath(a:module_list, l:dep_mod)
 	    endif
 	endfor
 
-	let l:tags_list = s:Module_Tags_List(v:false, a:mod) + s:Module_Tags_List(v:true, a:mod)
+	let [ l:external_inc_list, l:external_tags_list ] = s:Module_Inc_And_Tags_List(v:true, a:mod)
+	let [ l:local_inc_list, l:local_tags_list ] = s:Module_Inc_And_Tags_List(v:false, a:mod)
+	let [ l:inc_list, l:tags_list ] = [ l:local_inc_list + l:external_inc_list, l:local_tags_list + l:external_tags_list ]
 
 	let l:auto_cmd = { }
 	let l:auto_cmd.group = g:ProjectConfig_Project
 	let l:auto_cmd.event = a:mod.external ? [ 'BufRead' ] : [ 'BufNewFile', 'BufRead' ]
-	let l:auto_cmd.cmd = 'setlocal tags =' . l:tags_list->mapnew({ key, val -> val->fnameescape()->substitute('\V,', '\\\\\\,', 'g') })->join(',')
+	let l:auto_cmd.cmd = 'setlocal tags^=' . l:tags_list->mapnew({ key, val -> val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\\\,', 'g') })->join(',')
 
 	if len(g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags'])
 	    let l:auto_cmd.cmd .= ',' . g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags']
@@ -481,25 +498,41 @@ function s:SetupLocalVimTags(module_list, mod)
 	" echomsg l:auto_cmd
 
 	eval [ l:auto_cmd ]->autocmd_add()
+
+	let l:auto_cmd.cmd = 'setlocal path^=' . l:inc_list->mapnew({ key, val -> val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\\\,', 'g') })->join(',')
+
+	if len(g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_path'])
+	    let l:auto_cmd.cmd .= ',' . g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_path']
+	endif
+
+	let l:auto_cmd.cmd .= ' | setlocal path-=.'
+	let l:auto_cmd.cmd .= ' | setlocal path^=.'
+
+	eval [ l:auto_cmd ]->autocmd_add()
 	eval a:module_list->add(a:mod.name)
     endif
 endfunction
 
 function g:ProjectConfig_EnableVimTags(module, ...)
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags'] = &tags
+    if exists('g:ProjectConfig_CleanPathOption') && g:ProjectConfig_CleanPathOption
+	set path-=
+    endif
+
+    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags'] = &g:tags
+    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_path'] = &g:path
     let l:module_list = [ ]
 
     for l:module in [ a:module ] + a:000
 	if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:module)
 	    let l:mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:module]
-	    call s:AppendGlobalVimTags(l:module_list, v:true, l:mod)
+	    call s:AppendGlobalVimTagsAndPath(l:module_list, v:true, l:mod)
 	endif
     endfor
 
     for l:module in [ a:module ] + a:000
 	if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:module)
 	    let l:mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:module]
-	    call s:AppendGlobalVimTags(l:module_list, v:false, l:mod)
+	    call s:AppendGlobalVimTagsAndPath(l:module_list, v:false, l:mod)
 	endif
     endfor
 
@@ -508,7 +541,7 @@ function g:ProjectConfig_EnableVimTags(module, ...)
     for l:module in [ a:module ] + a:000
 	if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:module)
 	    let l:mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:module]
-	    call s:SetupLocalVimTags(l:module_list, l:mod)
+	    call s:SetupLocalVimTagsAndPath(l:module_list, l:mod)
 	endif
     endfor
 endfunction

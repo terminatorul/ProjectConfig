@@ -66,16 +66,19 @@ call ProjectConfig#SetScript('Name', 'Path')
 call ProjectConfig#SetScript('Path')
 ```
 
-Call the function to associate a project tree with a project script and a file script. The only
-required argument is the `Path`, other can be omitted. If not specified, the default values are:
+Call the function to associate a project tree with a project script and a files
+script. The only required argument is the `Path` to the project base directory,
+other options can be omitted. The default values are:
 * the project `Name` is the last path component from `Path`
 * the project script is `~/.vim/project/<Name>.vim`
-* the file script is `~/.vim/project/<Name>.file.vim` if file exists, or no file script otherwise.
-* the flag to keep current directory is false, that is the project script is always run in the
-  project directory, after which the current directory is restored. Beware the file script is
-  always run in the user current directory, which can well be outside the project!
+* the files script is `~/.vim/project/<Name>.files.vim` if file exists, or no
+  files script otherwise.
+* the flag to keep current directory is false, that is the project script is
+  always run in the project directory, after which the current directory is
+  restored. Beware the files script is always run in the user current directory,
+  which can well be outside the project!
 
-The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. The file script for
+The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. The files script for
 Linux has a default suffix of `.files.vim`, and `_files.vim` for Windows.
 
 Use this function in your local  `.vimrc` or `_vimrc`, once for every project tree that you want
@@ -87,10 +90,10 @@ the global variables `g:ProjectConfig_Directory` and `g:ProjectConfig_Project`
 
 ```
 :ProjectConfig Name Path ProjectScript FileScript
-:ProjectconfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript'
+:ProjectConfigAdd 'Name', 'Path', 'ProjectScript', 'FileScript'
 ```
 
-Same as the `ProjectConfig#SetScript` function above. But since these are Vim commands, they are
+Same as the `ProjectConfig#SetScript()` function above. But since these are Vim commands, they are
 only available after the plugin has been loaded by Vim, that is they are not available yet in
 the `.vimrc` file. Arguments other the `Path` are optional, like they are for the function.
 

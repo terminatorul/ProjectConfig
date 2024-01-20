@@ -23,7 +23,7 @@ Use Vimball release~
 
 Download the vimball release from Github (search for project
 terminatorul/ProjectConfig, then click on Releases). Open the `.vmb` file
-with Vim and run |:source| `%`
+in Vim and run |:source| `%`
 
 Use a Vim plugin manager~
 
@@ -60,13 +60,13 @@ Usage~
 Two kinds of vimscript files can be associated with any project tree:
 * a `project` script, that will be run the first time you `:cd ` inside the project
   directory in Vim, or the first time you `:edit` a file from the project tree
-* a `files` script, that will be run every single time you open/edit a file from
-  the project tree
+* a `files` script, that will be run every time you open/edit a file from the
+  project tree
 
 By default the `project` script has the same name as the project, with `.vim`
 extension added, and is searched in the `~/.vim/project/` directory
 (`~/vimfiles/project/` for Windows). The `files` script has the name of the project
-with an appended suffix of `.files.vim` (`_files.vim` for Windows).
+with the suffix `.files.vim` (`_files.vim` for Windows).
 
 						      *ProjectConfig#SetScript()*
 >
@@ -165,15 +165,27 @@ ProjectConfig API~
 
 ProjectConfig plugin exposes a small set of functions, intended for use by the
 project script, or the files script. Currently this API is intended to support
-generation of tag files from the project source files, to enable source code
-navigation in Vim.
+generation of tag files from the project source files, in order to enable source
+code browsing in Vim.
 
 The project script should create function references for the frequently used
 functions exposed here, for example:
 >
-  :let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
+ :let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
 >
 The above is an easy way to make the function name shorter.
+						   *ProjectConfig_CleanPathOption*
+>
+ :let g:ProjectConfig_CleanPathOption = v:true
+<
+When true (the default), remove the current directory from Vim 'path' option.
+The current directory is included by default in the 'path' option using an empty
+string '' as a directory name. But for non-trivial projects it is usually the
+wrong directory to have on the include path.
+
+Set to v:false to disable this behavior and keep the current directory in the
+include path.
+
 					        *ProjectConfig_DirectorySeparator*
 >
  g:ProjectConfig_DirectorySeparator
@@ -228,48 +240,53 @@ Windows SDK from Microsoft.
 >
 Internal dictionary with project configuration data (list of source directories,
 include directory, ctags option) for all modules for all projects. Included for
-exposition only, should not be modified directly.
+exposition only, should not be modified directly. Instead use the other
+functions described here.
 
 						     *ProjectConfig_Tags_Directory*
 >
  g:ProjectConfig_Tags_Directory = '.tags'
 >
-Default subdirectory within the current project, to hold the tag files for the
-project modules. Modules marked external will also generated tag files in the
+Default subdirectory, within the current project, to hold tag files for the
+project modules. Modules marked external will also generate tag files in this
 subdirectory by default.
 							 *ProjectConfig_AddModule*
 >
  g:ProjectConfig_AddModule(mod)
 >
-Create and add a new project module to the module list. A project module
-definition is a dictionary with the following keys:
+Create and add a new project module to the module list. A project module is
+given by the argument `mod7 and is a dictionary with the following keys:
 
-  - "dir" for one (or more) base directories for the module
-  - "src" for source directories
-  - "inc" for include directories
-  - "tags" for the name of the tags file for the modules
-  - "ctags_args" for extra arguments to ctags command
-  - "deps" for a list of dependency module names. Dependency modules should be
-    added before they are used.
-  - "external" to indicate a module that represents external libraries. These
+  - "name" (string) name of the module
+  - "dir" (string or string list) for one (or more) base directories for the module
+  - "src" (string or string list) for source directories
+  - "inc" (string or string list) for include directories
+  - "tags" (string) for the name of the tags file for the modules
+  - "ctags_args" (string or string list) for extra arguments to ctags command
+  - "deps" (string or string list) for a list of dependency module names. Dependency
+    modules should be added before they are used.
+  - "external" (boolean) to indicate a module that represents external libraries. These
     are configured last on the 'path' and 'tags' options, and after first build
-    they do not need to regenerated the tags by default.
+    they do not need to regenerate the tags by default.
 
-Any of the above entries can be a string or a list, and this function will
-convert a string to a one-element list if needed.
+For any of the above entries that can be a string or a list, this function will
+convert a string to a one-element list as needed.
 
-The project config script (`ProjectConfig#SetScript`) should define the modules
-according to the project settings, build options and external libraries...
+The project config script (`ProjectConfig#SetScript`) should call this function
+to create and add the modules for the current project, according to the project
+settings, build options, external libraries, etc.
 
 						   *ProjectConfig_CTagsCxxOptions*
 >
  g:ProjectConfig_CTagsCxxOptions
 >
-A set of default options for external ctags command, that is suitable for C and
-C++ source files. These default command line options can help C and C++
-developers with code browsing. Using this is optional, but it can help users who
-want to generated tags, but do not want to go into the details of ctags command
-line.
+A set of default options for external ctags command, that is suitable for
+parsing C and C++ source files. These default command line options can help C
+and C++ developers with code browsing, since the default behavior of the ctags
+command is rather conservative and limited, and most developers can benefit from
+extra ctags options on the command line. Using this value is optional, but it
+can help users who do not want to go into the details of the ctags command line
+options.
 
 						       *ProjectConfig_ShellEscape*
 >
@@ -279,8 +296,9 @@ Simple utility function, based on Vim `shellesscape()` function, to escape a
 command line arguments for use with the shell. It will only call `shellescape()`
 if the argument includes spaces or special characters, and for Windows also
 takes care of a special case when quoting "C:\Program Files\" for example
-actually results in the closing quote being escaped by the backslash character.
-So instead the function will return the argument escaped as "C:\Program Files"\.
+actually results in the closing quote being escaped by the backslash character,
+so it is not actually a closing quote. Instead, the function will return the
+argument escaped as "C:\Program Files"\.
 
 						    *ProjectConfig_SetConfigEntry*
 >
@@ -305,9 +323,9 @@ regenerated.  Non-external modules will regenerate their tags.
 >
  g:ProjectConfig_BuildAllTags(project, module, ...)
 >
-Invoke ctags command using the shell, to generated the tag files for given
-modules (plus dependency modules) from the given project. All modules, both
-marked external and not external, will regenerated the tag files.
+Invoke ctags command, using the shell, to generate tag files for given modules
+(plus dependency modules) from the specified project. All modules, both marked
+external and not external, will regenerate the tag files.
 
 					        *ProjectConfig_EnableReTagCommand*
 >
@@ -315,19 +333,20 @@ marked external and not external, will regenerated the tag files.
 >
 Create new Vim `:command`s, based on the current project name in
 `g:ProjectConfig_Project`, of the form:
-  :command ReTagNvStrapsConfig
-  :command ReTagNvStrapsConfigAll
+  :command ReTagCurrentProjectName
+  :command ReTagCurrentProjectNameAll
 that will invoke the above functions `g:ProjectConfig_BuildTags` as needed to
-regenerate tag files for the current project.
+regenerate tag files for the current project (Replace CurrentProjectName above
+with the name of the current project, given in g:ProjectConfig_Project).
 
 						     *ProjectConfig_EnableVimTags*
 >
  g:ProjectConfig_EnableVimTags(module, ...)
 >
-Setup the 'tags' option in Vim to include the tag file for the given project
-modules, plus and dependency modules, and takes care to set up each module
-according to the the module base directory, source directories and include
-directories.  The modules should be added with `g:ProjectConfig_AddModule()`
-before this function can be used.
+Setup the 'tags' and 'path' options in Vim to include the tag files and the
+include directories for the given project modules, plus any dependency modules,
+and takes care to set up each module according to the the module base directory
+and source directories.  The modules should be added with
+`g:ProjectConfig_AddModule()` before this function is used.
 
  vim:ft=help:tw=80:ts=8:
