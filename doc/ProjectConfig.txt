@@ -205,6 +205,31 @@ backslash character, as expected for the curent system ('\' for Windows, '/'
 otherwise). Beware the `:autocmd` Vim command always expects (forward) slash
 characters for the buffer name pattern.
 
+						   *ProjectConfig_ParsePathOption*
+>
+ g:ProjectConfig_ParsePathOption(value)
+>
+Parse the string value of a Vim list option, given by value, into a list object,
+by splitting the string at comma ',' characters that are not escaped with a
+backslash. Escape sequences for special characters ('\ ', '\\', '\,') are
+procesed and replaced with the escaped character directly, so "C:\Program\ Files\
+(x86)" in the string value is parsed back into "C:\Program Files (x86)".
+
+							  *ProjectConfig_ShowPath*
+>
+ g:ProjectConfig_ShowPath(value = v:none)
+>
+Utility function to show the value of a path list or file list Vim option
+('path', 'runtimepath', 'tags', 'directory') with one entry per line. Add a new
+Vim command for this function like this:
+>
+  command -nargs=? -complete=expression ShowPath
+	\ call g:ProjectConfig_ShowPath(<args>)
+
+The default is to show value for the local 'path' option if set, or the global
+option otherwise. You can show some other option by passing the option value,
+like for exampl `&g:tags`, as a command argument.
+
 						       *ProjectConfig_ListCompare*
 >
  function g:ProjectConfig_ListCompare(list1, list2)
@@ -249,7 +274,9 @@ functions described here.
 >
 Default subdirectory, within the current project, to hold tag files for the
 project modules. Modules marked external will also generate tag files in this
-subdirectory by default.
+subdirectory by default. Each module can change the location of the tags file
+for the module by setting the 'tags' key.
+
 							 *ProjectConfig_AddModule*
 >
  g:ProjectConfig_AddModule(mod)
