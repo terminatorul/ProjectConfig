@@ -1,3 +1,4 @@
 /.VimballRecord
 tags
 *.vmb
+*.sw[po]
