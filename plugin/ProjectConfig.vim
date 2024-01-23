@@ -1,8 +1,10 @@
 " Vim plugin to apply project specific settings in Vim when working in your
 "   project tree.
-" Last Change: 2018-sep-26
+" Last Change: 2023-jan-22
 " Maintainer:  Timothy Madden <terminatorul@gmail.com>
 " License:     The unlicense http://unlicense.org/
+"
+" GetLatestVimScripts: 6093 28595  :AutoInstall: ProjectConfig.vmb
 
 if exists('g:ProjectConfig_PluginLoaded')
     finish
