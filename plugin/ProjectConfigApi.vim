@@ -164,14 +164,48 @@ function g:ProjectConfig_MS_SDK_UCRT_Module(version = g:ProjectConfig_DefaultSDK
     endif
 
     let l:SDK_UCRT.ctags_args = [ '--recurse', '--languages=+C,C++', '--map-C++=+.', '--kinds-C=+px', '--kinds-C++=+px' ]
-    eval l:SDK_UCRT.ctags_args->extend([ '-D_EXPORT_STD=export', '-D_CONSTEXPR20=constexpr', '-D_STD=::std::', '-D_NODISCARD_=' ])
+    eval l:SDK_UCRT.ctags_args->extend([ '-D_EXPORT_STD=export', '-D_CONSTEXPR20=constexpr', '-D_STD=::std::', '-D_NODISCARD_=', '-D_NODISCARD=' ])
     eval l:SDK_UCRT.ctags_args->extend([ '-D_STD_BEGIN=namespace std {', '-D_STD_END=}', '-D_STDEXT_BEGIN=namespace stdext {', '-D_STDEXT_END=}' ])
     eval l:SDK_UCRT.ctags_args->extend([ '-D_STDEXT=::stdext::', '-D_CSTD=::', '-D_CHRONO=::std::chrono::', '-D_RANGES=::std::ranges::' ])
     eval l:SDK_UCRT.ctags_args->extend([ '-D_EXTERN_C=', '-D_HAS_CXX17', '-D_HAS_CXX20', '-D_HAS_CXX23', '-D_CONSTEXPR23=constexpr' ])
-    eval l:SDK_UCRT.ctags_args->extend([ '-D_INLINE_VAR=inline', '-D__CLR_OR_THIS_CALL=', '-D__CLRCALL_OR_CDECL=', '-D_VCRT_NOALIAS=', '-D_VCRT_RESTRICT=' ])
+    eval l:SDK_UCRT.ctags_args->extend([ '-D_INLINE_VAR=inline', '-D__CLR_OR_THIS_CALL=', '-D__CLRCALL_OR_CDECL=', '-D_VCRT_NOALIAS=', '-D_VCRT_RESTRICT=', '-D_VCRTIMP=' ])
     eval l:SDK_UCRT.ctags_args->extend([ '-D_CRT_BEGIN_C_HEADER=', '-D_CRT_END_C_HEADER=', '-D_MSVC_CONSTEXPR=constexpr'])
+    eval l:SDK_UCRT.ctags_args->extend([ '-D_CRTIMP2_IMPORT=', '-D_CRTIMP2_PURE_IMPORT=', '-D_CRTDATA2_IMPORT='])
+    eval l:SDK_UCRT.ctags_args->extend([ '-DDEFINE_DEVPROPKEY(name, ...)=const DEVPROPKEY name { ... }'])
+
     let l:SDK_UCRT.external = v:true
 
+    " 	"-include" "vcruntime_string.h"
+    "
+    "  Internal Microsoft preprocessor SAL (Source Annotation Language)
+    " 	"-D__ANNOTATION(...)="
+    " 	"-D__PRIMOP(...)="
+    " 	"-D__QUALIFIER(...)="
+    " 	"-D__MACHINE(...)="
+    " 	"-D_Return_type_success_(...)="
+    " 	"-D_SAL2_Source_(...)="
+    " 	"-D_Function_class_(...)="
+    " 	"-D_IRQL_requires_max_(...)="
+    " 	"-D_Field_size_bytes_opt_(...)="
+    " 	"-D_In_reads_bytes_(...)="
+    " 	"-D_Inout_updates_bytes(...)="
+    " 	"-D_In_range_(...)="
+    "
+    " 	"-D_Null_terminated_="
+    " 	"-D_NullNull_terminated_="
+    " 	"-D_In_="
+    " 	"_Out_="
+    " 	"_Inout_="
+    " 	"-D__In_impl_="
+    " 	"-D__deferTypecheck="
+    " 	"-D_Must_inspect_result_="
+    " 	"-D_Check_return_"
+    " 	"-D_IRQL_requires_same_="
+    " 	"-D_Interlocked_operand_="
+    " 	"-D_USE_ATTRIBUTES_FOR_SAL=0"
+    " 	"-D_USE_DECLSPECS_FOR_SAL=0"
+    "
+    "	"-DDEFINE_DEVPROPKEY(name, ...)=const DEVPROPKEY name { ... }"
     return l:SDK_UCRT
 endfunction
 
