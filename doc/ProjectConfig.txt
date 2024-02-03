@@ -69,6 +69,8 @@ extension added, and is searched in the `~/.vim/project/` directory
 with the suffix `.files.vim` (`_files.vim` for Windows).
 
 						      *ProjectConfig#SetScript()*
+						      *g:ProjectConfig_Directory*
+						        *g:ProjectConfig_Project*
 >
  call ProjectConfig#SetScript
 	    \ ('Name', 'Path', 'ProjectScriptPath', 'FileScriptPath', KeepPWD)
@@ -76,17 +78,17 @@ with the suffix `.files.vim` (`_files.vim` for Windows).
  call ProjectConfig#SetScript('Path')
 <
 
-Call the function to associate a project tree with a project script and a file
-script. The only required argument is the `Path`, other can be omitted. If not
-specified, the default values are:
-* the project `Name` is the last path component from `Path`
-* the project script is `~/.vim/project/<Name>.vim`
-* the file script is `~/.vim/project/<Name>.files.vim` if file exists, or no file
+Associate a project tree with a project script and a file script. The only
+required argument is the `Path`, other can be omitted. If not specified, the
+default values are:
+* the project `Name` is the last path component from `Path` the project script
+* is `~/.vim/project/<Name>.vim` the file script is
+* `~/.vim/project/<Name>.files.vim` if file exists, or no file
   script otherwise.
 * the flag to keep current directory is false, that is the project script is
-  always run in the project directory, after which the current directory is
-  restored. Beware the file script is always run in the user current directory,
-  which can well be outside the project!
+  always run from the project directory, after which the current directory is
+  restored. Beware the file script is always run from the user current
+  directory, which can well be outside the project!
 
 The `~/.vim/` directory is used for Linux, `~/vimfiles` for Windows. The file
 script for Linux has a default suffix of `.files.vim`, and `_files.vim` for
@@ -364,7 +366,7 @@ Create new Vim `:command`s, based on the current project name in
   :command ReTagCurrentProjectNameAll
 that will invoke the above functions `g:ProjectConfig_BuildTags` as needed to
 regenerate tag files for the current project (Replace CurrentProjectName above
-with the name of the current project, given in g:ProjectConfig_Project).
+with the name of the current project, given in `g:ProjectConfig_Project`).
 
 						     *ProjectConfig_EnableVimTags*
 >
