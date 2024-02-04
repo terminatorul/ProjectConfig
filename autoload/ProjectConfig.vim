@@ -1,5 +1,6 @@
 let s:ProjectConfigScript = [ ]
 let s:ProjectConfig_ApplyScript = v:false	" used to prevent recursion
+let s:LoadedProjects = []
 
 if !exists('g:ProjectConfig_NERDTreeIntegration')
     let g:ProjectConfig_NERDTreeIntegration = v:true
@@ -32,13 +33,16 @@ function s:ApplyProjectConfigScript(full_path, project)
 				    endif
 				endif
 
-				try
-				    source `=fnameescape(l:configData.project_script)`
-				finally
-				    if has_key(l:configData, 'cd') && tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
-					lchdir `=fnameescape(l:WorkingDirectory)`
-				    endif
-				endtry
+				if index(s:LoadedProjects, l:configData.project_name) < 0
+				    call add(s:LoadedProjects, l:configData.project_name)
+				    try
+					source `=fnameescape(l:configData.project_script)`
+				    finally
+					if has_key(l:configData, 'cd') && tr(l:WorkingDirectory, '\', '/') != g:ProjectConfig_Directory
+					    lchdir `=fnameescape(l:WorkingDirectory)`
+					endif
+				    endtry
+				endif
 
 				unlet g:ProjectConfig_Directory
 				unlet g:ProjectConfig_Project
