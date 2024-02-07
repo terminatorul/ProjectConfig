@@ -1,6 +1,40 @@
 
 let g:ProjectConfig_CTags = { }
 
+"     \        '--kinddef-C++=M,module,modules', '--kinddef-C++=P,partition,module partitions',
+"     \        '--_roledef.C++.h=+imported,imported',
+"     \        '--_roledef.C++.M=+imported,imported',
+"     \        '--regex-C++=/^[[:space:]]*module([[:space:]]*:[[:space:]]*private)?[[:space:]]*;[[:space:]]*$//M/{placeholder}',
+"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/',
+"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}',
+"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+\<([^>])\>[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}{_role=system}',
+"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+"([^"])"[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}{_role=local}',
+"     \        '--kinds-C++=+{module}{partition}'
+
+let g:ProjectConfig_CTagsCxxModuleOptions =
+    \[
+    \  '--kinddef-C++=M,module,modules',
+    \  '--kinddef-C++=P,partition,module partitions',
+    \  '-Dimport=',
+    \  '--regex-C++=/^[[:space:]]*module([[:space:]]*:[[:space:]]*private)?[[:space:]]*;[[:space:]]*$//M/{placeholder}',
+    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/',
+    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)([[:space:]]*\[\[[][a-zA-Z_0-9,:\.+'' -]\]\])*[[:space:]]*;[[:space:]]*$/\2:\3/P/',
+    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)([[:space:]]*\[\[[][a-zA-Z_0-9,:\.+'' -]\]\])*[[:space:]]*;[[:space:]]*$/:\3/P/{_field=section:\1}',
+    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*;[[:space:]]*$/\2/M/{placeholder}',
+    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*;[[:space:]]*$//P/{placeholder}',
+    \  '--kinds-C++=+{module}{partition}'
+    \]
+
+let g:ProjectConfig_CTagsCxxOptions =
+    \[
+    \  '--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
+    \   '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals',
+    \]
+
+if has('win32') || has('win64')
+    eval g:ProjectConfig_CTagsCxxOptions->extend([ '-D_M_AMD64', '-D_WINDOWS', '-D_MBCS', '-D_WIN64', '-D_WIN32', '-D_MSC_VER=1933', '-D_MSC_FULL_VER=193331630'])
+endif
+
 let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
 let s:Shell_Escape = funcref('g:ProjectConfig_ShellEscape')
 

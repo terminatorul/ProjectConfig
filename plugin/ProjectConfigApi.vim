@@ -86,7 +86,7 @@ function s:MSVC_Tools_Directory(Release, Product, Tools_Version)
     let l:vs_dir = glob(s:Join_Path(l:vs_dir, 'VC', 'Tools', 'MSVC', a:Tools_Version), v:true, v:true)
 
     if len(l:vs_dir)
-	let l:vs_dir = s:Sort_Version_Dir(l:vs_dir)[-1]   " Try choosing latest tools version eg. 14.38.33130
+	let l:vs_dir = s:Sort_Version_Dir(l:vs_dir)[-1]     " Try choosing latest tools version eg. 14.38.33130
     else
 	return [ ]
     endif
@@ -194,8 +194,8 @@ function g:ProjectConfig_MS_SDK_UCRT_Module(version = g:ProjectConfig_DefaultSDK
     " 	"-D_Null_terminated_="
     " 	"-D_NullNull_terminated_="
     " 	"-D_In_="
-    " 	"_Out_="
-    " 	"_Inout_="
+    " 	"_D_Out_="
+    " 	"-D_Inout_="
     " 	"-D__In_impl_="
     " 	"-D__deferTypecheck="
     " 	"-D_Must_inspect_result_="
@@ -273,16 +273,6 @@ function g:ProjectConfig_AddModule(mod)
 
     let g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[a:mod.name] = a:mod
 endfunction
-
-let g:ProjectConfig_CTagsCxxOptions =
-    \[
-    \	'--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
-    \   '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}', '--totals'
-    \]
-
-if has('win32') || has('win64')
-    eval g:ProjectConfig_CTagsCxxOptions->extend([ '-D_M_AMD64', '-D_WINDOWS', '-D_MBCS', '-D_WIN64', '-D_WIN32', '-D_MSC_VER=1933', '-D_MSC_FULL_VER=193331630'])
-endif
 
 function g:ProjectConfig_ParsePathOption(value)
     let l:value_list = [ ]
