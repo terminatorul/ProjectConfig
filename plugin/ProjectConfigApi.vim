@@ -1,8 +1,8 @@
-let g:ProjectConfig_DirectorySeparator = exists('&shellslash') ? '\' : '/'
+let g:ProjectConfig_DirectorySeparator = exists('+shellslash') ? '\' : '/'
 let s:sep = g:ProjectConfig_DirectorySeparator
 
 " Join multiple path components using the directory separator in
-" g:ProjectConfig_DirectorySeprator
+" g:ProjectConfig_DirectorySeparator
 function g:ProjectConfig_JoinPath(...)
     return join(a:000, s:sep)
 endfunction
