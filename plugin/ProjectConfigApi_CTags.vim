@@ -28,7 +28,7 @@ let g:ProjectConfig_CTagsCxxModuleOptions =
 let g:ProjectConfig_CTagsCxxOptions =
     \[
     \  '--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
-    \   '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals',
+    \   '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
     \]
 
 if has('win32') || has('win64')
