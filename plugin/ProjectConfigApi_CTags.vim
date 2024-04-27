@@ -60,7 +60,7 @@ function s:Expand_CTags_Command_Line()
     endif
 
     if exists('g:ProjectConfig_CTags_Options')
-	call extend(s:ProjectConfig_CTags_Options, g:ProjectConfig_CTags_Options)
+	eval s:ProjectConfig_CTags_Options->extend(g:ProjectConfig_CTags_Options)
     endif
 
     let s:ProjectConfig_CTags_Path = s:Shell_Escape(s:ProjectConfig_CTags_Path)
@@ -89,7 +89,7 @@ function s:Build_Module_Tags(project, module)
     let l:mod = l:project.modules[a:module]
     let l:ctags_command_list = [ s:ProjectConfig_CTags_Path ] + s:ProjectConfig_CTags_Options
 	\ + l:project.config.ctags_args + l:mod.ctags_args + [ '-f', s:Shell_Escape(l:mod.tags) ]
-	\ + mapnew(s:List_Append_Unique(l:mod.src, l:mod.inc), { key, val -> s:Shell_Escape(val) })
+	\ + mapnew(s:List_Append_Unique(l:mod.src, l:mod.inc), { _, val -> s:Shell_Escape(val) })
 
     let l:tags_dir = fnamemodify(l:mod.tags, ':h')
     call mkdir(l:tags_dir, 'p')

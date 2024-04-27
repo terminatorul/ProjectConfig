@@ -9,7 +9,7 @@ endfunction
 
 let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
 
-" Element-wize comparison for two lists, returns -1, 0, or 1
+" Element-wise comparison for two lists, returns -1, 0, or 1
 function g:ProjectConfig_ListCompare(list1, list2)
     let l:len1 = len(a:list1)
     let l:len2 = len(a:list2)
@@ -350,6 +350,10 @@ endfunction
 
 function s:AppendGlobalVimTagsAndPath(generators, module_list, external_modules, mod)
     if a:module_list->index(a:mod.name) < 0
+	if !!a:mod.external == !!a:external_modules
+	    eval a:module_list->add(a:mod.name)
+	endif
+
 	for l:dependency_module in a:mod.deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
@@ -359,7 +363,6 @@ function s:AppendGlobalVimTagsAndPath(generators, module_list, external_modules,
 
 	if !!a:mod.external == !!a:external_modules
 	    call mapnew(a:generators, { _, val -> val.UpdateGlobalConfig(a:mod) })	" in-depth traversal for dependency tree
-	    eval a:module_list->add(a:mod.name)
 	endif
     endif
 endfunction
@@ -396,16 +399,18 @@ function s:Module_Inc_And_Tags_List(generators, external_modules, mod)
     endwhile
 endfunction
 
-function g:ProjectConfig_AddModuleAutocmd(mod, cmd)
+function g:ProjectConfig_AddModuleAutocmd(mod, cmd, pat = [ ])
     let l:auto_cmd = { }
     let l:auto_cmd.group   = g:ProjectConfig_Project
     let l:auto_cmd.event   = a:mod.external ? [ 'BufRead' ] : [ 'BufNewFile', 'BufRead' ]
     let l:auto_cmd.cmd     = a:cmd
-    let l:auto_cmd.pattern = [ ]
+    let l:auto_cmd.pattern = a:pat
 
-    for l:dir in a:mod.dir
-	eval l:auto_cmd.pattern->add(l:dir->fnamemodify(':p')->substitute('\\', '/', 'g') . '*')
-    endfor
+    if len(a:pat) ==0
+	for l:dir in a:mod.dir
+	    eval l:auto_cmd.pattern->add(l:dir->fnamemodify(':p')->substitute('\\', '/', 'g') . '*')
+	endfor
+    endif
 
     " echomsg l:auto_cmd
 
@@ -414,6 +419,8 @@ endfunction
 
 function s:SetupLocalVimTagsAndPath(generators, module_list, mod)
     if a:module_list->index(a:mod.name) < 0
+	eval a:module_list->add(a:mod.name)
+
 	for l:dependency_module in a:mod.deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
@@ -425,12 +432,15 @@ function s:SetupLocalVimTagsAndPath(generators, module_list, mod)
 	call s:Module_Inc_And_Tags_List(a:generators, v:true, a:mod)
 	call s:Module_Inc_And_Tags_List(a:generators, v:false, a:mod)
 	call mapnew(a:generators, { _, val -> val.LocalConfigCompleteModule(a:mod) })
-	eval a:module_list->add(a:mod.name)
     endif
 endfunction
 
 function g:ProjectConfig_EnableVimTags(module, ...)
-    let l:generators = [ copy(g:ProjectConfig_CTags), copy(g:ProjectConfig_IncludePath) ]
+    let l:generators =
+		\ [
+		\	copy(g:ProjectConfig_IncludePath),
+		\	copy(g:ProjectConfig_CTags)
+		\ ]
 
     call mapnew(l:generators, { _, val -> val.LocalConfigInit() })
 
@@ -453,4 +463,91 @@ function g:ProjectConfig_EnableVimTags(module, ...)
 	    call s:SetupLocalVimTagsAndPath(l:generators, l:module_list, l:mod)
 	endif
     endfor
+endfunction
+
+if has('win16') || has('win32') || has('win64')
+    let g:ProjectConfig_DevNull = 'NUL'
+else
+    let g:ProjectConfig_DevNull = '/dev/null'
+endif
+
+if !exists('g:ProjectConfig_GCC_ShowSpecArgs')
+    let g:ProjectConfig_GCC_ShowSpecArgs = [ '-v', '-dM', '-E', '-x' ]
+endif
+
+if !exists('g:ProjectConfig_GCC_compiler')
+    let g:ProjectConfig_GCC_compiler = [ 'gcc' ]
+endif
+
+function s:ProjectConfig_GetGnuCompiler()
+    return g:ProjectConfig_GCC_compiler
+endfunction
+
+function s:ProjectConfig_LocateGnuCompiler()
+    if type(g:ProjectConfig_GCC_compiler) != v:t_list
+	let g:ProjectConfig_GCC_compiler = [ g:ProjectConfig_GCC_compiler ]
+    endif
+
+    let l:compiler_exe = exepath(g:ProjectConfig_GCC_compiler[0])
+
+    if !empty(l:compiler_exe)
+	let g:ProjectConfig_GCC_compiler = [ l:compiler_exe ] + g:ProjectConfig_GCC_compiler[1:]
+
+	let g:ProjectConfig_GnuCompiler = funcref('s:ProjectConfig_GetGnuCompiler')
+    endif
+
+    return g:ProjectConfig_GCC_compiler
+endfunction
+
+let g:ProjectConfig_GnuCompiler = funcref('s:ProjectConfig_LocateGnuCompiler')
+
+function g:ProjectConfig_Read_gcc_specs(language = 'c', compiler_exe = v:null, compiler_args = [ ])
+    if empty(a:compiler_exe)
+	let l:compiler_exe = g:ProjectConfig_GnuCompiler()
+    else
+	if type(a:compiler_exe) == v:t_list
+	    let l:compiler_exe = a:compiler_exe
+	else
+	    let l:compiler_exe = [ a:compiler_exe ]
+	endif
+    endif
+
+    let l:output_list = (l:compiler_exe + a:compiler_args + g:ProjectConfig_GCC_ShowSpecArgs + [ a:language, g:ProjectConfig_DevNull ])
+		\ ->mapnew({ _, val -> s:Shell_Escape(val) })->join(' ')->systemlist()
+
+    let l:idx = -1
+
+    for [l:i, l:line] in l:output_list->items()
+	if stridx(l:line, '#include "..."') >= 0
+	    let l:idx = l:i
+	    break
+	endif
+    endfor
+
+    let l:include_path = [ ]
+
+    if l:idx >= 0
+	let l:idx += 1
+
+	while l:idx < len(l:output_list) && len(l:output_list[l:idx]) > 0
+		    \ && (l:output_list[l:idx][0] == ' ' || stridx(l:output_list[l:idx], '#include <...>') >= 0)
+	    if l:output_list[l:idx][0] == ' ' " && l:output_path[l:idx] != '/usr/local/include'
+		eval l:include_path->add(l:output_list[l:idx][1:])
+	    endif
+
+	    let l:idx += 1
+	endwhile
+    endif
+
+    let l:macro_defs = { }
+
+    for l:line in l:output_list
+	let l:matches = l:line->matchlist('\v^\C\s*#\s*define\s+(\h\w*(\(\s*(\h\w*\s*(\,\s*\h\w*\s*)*)?\))?)(\s+(.*))?$')
+
+	if !empty(l:matches)
+	    let l:macro_defs[l:matches[1]] = l:matches[6]
+	endif
+    endfor
+
+    return { 'inc': l:include_path, 'def': l:macro_defs }
 endfunction
