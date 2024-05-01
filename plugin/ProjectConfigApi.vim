@@ -47,6 +47,48 @@ endfunction
 
 let s:List_Compare = funcref('g:ProjectConfig_ListCompare')
 
+function g:ProjectConfig_ListAppendUnique(l1, l2)
+    let l:list = copy(a:l1)
+
+    for l:element in a:l2
+	if l:list->index(l:element) < 0
+	    eval l:list->add(l:element)
+	endif
+    endfor
+
+    return l:list
+endfunction
+
+function g:ProjectConfig_ExpandModuleSources(project, module)
+    let l:source_list = [ ]
+
+    for l:source_glob in a:module.src + a:module.inc
+	let l:run_filter = v:true
+
+	if isdirectory(l:source_glob)
+	    if a:module.recurse
+		let l:source_glob .= '/**'
+		let l:run_filter = v:false
+	    else
+		l:source_glob .= '/*'
+	    endif
+	endif
+
+	let l:glob_list = l:source_glob->glob(v:true, v:true)
+
+	if l:run_filter
+	    eval l:glob_list->filter({ _, val -> !isdirectory(val) })
+	endif
+
+	let l:source_list = s:List_Append_Unique(l:source_list, l:glob_list)
+    endfor
+
+    return l:source_list
+endfunction
+
+" dpkg --listfiles libc6-dev
+" rpm --query --list glibc-devel
+
 function s:Sort_Version_Dir(Dir_List)
     let l:sort_list = [ ]
 
@@ -54,7 +96,7 @@ function s:Sort_Version_Dir(Dir_List)
 	let l:version_string = fnamemodify(l:dir, ':t')
 
 	if match(l:version_string, '\v^[0-9]+(\.[0-9]+)*$') >= 0	" only version numbers, of the form 23.10938.24.02
-	    call add(l:sort_list, [ mapnew(split(l:version_string, '\.'), { key, val -> str2nr(val) }), l:dir ])
+	    call add(l:sort_list, [ mapnew(split(l:version_string, '\.'), { _, val -> str2nr(val) }), l:dir ])
 	endif
     endfor
 
@@ -382,7 +424,7 @@ function s:Module_Inc_And_Tags_List_Per_Level(generators, mod_list, current_dept
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
 		let l:level_reached = s:Module_Inc_And_Tags_List_Per_Level(a:generators, a:mod_list, a:current_depth_level + 1, a:target_depth_level, a:external_modules, l:dep_mod)
-		let l:depth_level_reached = l:depth_level_reached && l:level_reached
+		let l:depth_level_reached = l:depth_level_reached || l:level_reached
 	    endif
 	endfor
 

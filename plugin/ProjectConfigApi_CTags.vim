@@ -72,17 +72,7 @@ endfunction
 " Populate s:ProjectConfig_CTags_Path and s:ProjectConfig_CTags_Options
 let s:Expand_CTags_Command = funcref('s:Expand_CTags_Command_Line')
 
-function s:List_Append_Unique(l1, l2)
-    let l:list = copy(a:l1)
-
-    for l:element in a:l2
-	if index(l:list, l:element) < 0
-	    call add(l:list, l:element)
-	endif
-    endfor
-
-    return l:list
-endfunction
+let s:List_Append_Unique = funcref('g:ProjectConfig_ListAppendUnique')
 
 function s:Build_Module_Tags(project, module)
     let l:project = g:ProjectConfig_Modules[a:project]

@@ -239,8 +239,16 @@ like for exampl `&g:tags`, as a command argument.
  function g:ProjectConfig_ListCompare(list1, list2)
 >
 >
-Simple utility function to compare to Vim lists element by element, and return
--1, 0, or 1 to indicate list1 is less, equal, or greater then list2.
+Utility function to compare to Vim lists element by element, and return -1, 0,
+or 1 to indicate list1 is less, equal, or greater then list2.
+
+					       *ProjectConfig_ListAppendUnique()*
+>
+ function g:ProjectConfig_ListAppendUnique(list1, list2)
+>
+>
+Utility function to append to list1 all elements from list2 that do not already
+exist in list1.
 
 						*ProjectConfig_DefaultSDKVersion*
 >
@@ -264,7 +272,8 @@ toolset version, Windows SDK version, etc.
 Create a project module with the expected include files and the expected ctags
 options to use for running ctags on Windows SDK and Visual C++ (with standard
 C++ libary). The Windows Universal CRT (C Run-Time library) is included in the
-Windows SDK from Microsoft.  *ProjectConfig_Modules*
+Windows SDK from Microsoft.
+                                                          *ProjectConfig_Modules*
 >
  let g:ProjectConfig_Modules = { }
 >
@@ -305,6 +314,20 @@ given by the argument `mod7 and is a dictionary with the following keys:
   - "inc" (string or string list) for include directories
   - "tags" (string) for the name of the tags file for the modules
   - "ctags_args" (string or string list) for extra arguments to ctags command
+  - "cscope" (dictionary) cscope configuration for the module, or v:null to
+    disable cscope database for this module.
+      - "db" (string) name of the database file. by default it is
+	cscope.module_name.out
+      - "build_args" (string or string list) extra arguments to cscope command
+	for generationg the database
+      - "lookup_args" (string or string list) extra arguments to cscope command
+	for using the database to find symbols
+      - "glob" (string or string list) glob()-like filter for source files
+	that should go into the cscope database, applied to the directories given
+	in "src" and "inc" entries.
+      - "regexp" (string or string list) regexp filter for source files
+	that should go into the cscope database, applied to the directories given
+	in "src" and "inc" entries.
   - "deps" (string or string list) for a list of dependency module names.
     Dependency modules should be added before they are used.
   - "external" (boolean) to indicate a module that represents external libraries.
