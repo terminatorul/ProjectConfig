@@ -1,30 +1,3 @@
-
-let g:ProjectConfig_CTags = { }
-
-"     \        '--kinddef-C++=M,module,modules', '--kinddef-C++=P,partition,module partitions',
-"     \        '--_roledef.C++.h=+imported,imported',
-"     \        '--_roledef.C++.M=+imported,imported',
-"     \        '--regex-C++=/^[[:space:]]*module([[:space:]]*:[[:space:]]*private)?[[:space:]]*;[[:space:]]*$//M/{placeholder}',
-"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/',
-"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}',
-"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+\<([^>])\>[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}{_role=system}',
-"     \        '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+"([^"])"[[:space:]]*;[[:space:]]*$/\2/M/{_extra=reference}{_role=imported}{_role=local}',
-"     \        '--kinds-C++=+{module}{partition}'
-
-let g:ProjectConfig_CTagsCxxModuleOptions =
-    \[
-    \  '--kinddef-C++=M,module,modules',
-    \  '--kinddef-C++=P,partition,module partitions',
-    \  '-Dimport=',
-    \  '--regex-C++=/^[[:space:]]*module([[:space:]]*:[[:space:]]*private)?[[:space:]]*;[[:space:]]*$//M/{placeholder}',
-    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.:]*)[[:space:]]*;[[:space:]]*$/\2/M/',
-    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)([[:space:]]*\[\[[][a-zA-Z_0-9,:\.+'' -]\]\])*[[:space:]]*;[[:space:]]*$/\2:\3/P/',
-    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?module[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)([[:space:]]*\[\[[][a-zA-Z_0-9,:\.+'' -]\]\])*[[:space:]]*;[[:space:]]*$/:\3/P/{_field=section:\1}',
-    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]+([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*;[[:space:]]*$/\2/M/{placeholder}',
-    \  '--regex-C++=/^[[:space:]]*(export[[:space:]]+)?import[[:space:]]*:[[:space:]]*([a-zA-Z_][a-zA-Z_0-9\.]*)[[:space:]]*;[[:space:]]*$//P/{placeholder}',
-    \  '--kinds-C++=+{module}{partition}'
-    \]
-
 let g:ProjectConfig_CTagsCxxOptions =
     \[
     \  '--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
@@ -136,14 +109,14 @@ function g:ProjectConfig_EnableReTagCommand(module, ...)
 endfunction
 
 " Notify current project is added to g:ProjectConfig_Modules
-function <SID>ProjectConfig_CTags_AddCurrentProject()
+function s:AddCurrentProject()
     if !has_key(g:ProjectConfig_Modules[g:ProjectConfig_Project].config, 'ctags_args')
 	let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['ctags_args'] = [ ]
     endif
 endfunction
 
 " Notify project config entry is updated
-function <SID>ProjectConfig_CTags_SetConfigEntry(name)
+function s:SetConfigEntry(name)
     if a:name == 'ctags_args'
 	if type(g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name]) != v:t_list
 	    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name] = [ g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name] ]
@@ -154,25 +127,28 @@ function <SID>ProjectConfig_CTags_SetConfigEntry(name)
 endfunction
 
 " Notify new project module is initialized
-function <SID>ProjectConfig_CTags_AddModule(mod)
-    if has_key(a:mod, 'ctags_args')
-	if type(a:mod.ctags_args) != v:t_list
-	    let a:mod.ctags_args = [ a:mod.ctags_args ]
+function s:AddModule(module, ...)
+    for l:mod in [ a:module ]->extend(a:000)
+	if has_key(l:mod, 'ctags_args')
+	    if type(l:mod.ctags_args) != v:t_list
+		let l:mod.ctags_args = [ l:mod.ctags_args ]
+	    endif
+
+	    call map(l:mod.ctags_args, { _, val -> s:Shell_Escape(val) })
+	else
+	    let l:mod.ctags_args = [ ]
 	endif
 
-	call map(a:mod.ctags_args, { key, val -> s:Shell_Escape(val) })
-    else
-	let a:mod.ctags_args = [ ]
-    endif
-
-    if !has_key(a:mod, 'tags')
-	let a:mod.tags = s:Join_Path(g:ProjectConfig_Directory, g:ProjectConfig_Tags_Directory, a:mod.name . '.tags')
-    endif
+	if !has_key(l:mod, 'tags')
+	    let l:mod.tags = s:Join_Path(g:ProjectConfig_Directory, g:ProjectConfig_Tags_Directory, l:mod.name . '.tags')
+	endif
+    endfor
 endfunction
 
-let g:ProjectConfig_CTags.AddCurrentProject = funcref('<SID>ProjectConfig_CTags_AddCurrentProject')
-let g:ProjectConfig_CTags.SetConfigEntry = funcref('<SID>ProjectConfig_CTags_SetConfigEntry')
-let g:ProjectConfig_CTags.AddModule = funcref('<SID>ProjectConfig_CTags_AddModule')
+let g:ProjectConfig_CTags = { 'name': 'ctags' }
+let g:ProjectConfig_CTags.AddCurrentProject = funcref('s:AddCurrentProject')
+let g:ProjectConfig_CTags.SetConfigEntry = funcref('s:SetConfigEntry')
+let g:ProjectConfig_CTags.AddModule = funcref('s:AddModule')
 
 function g:ProjectConfig_CTags.LocalConfigInit()
     let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags'] = &g:tags
@@ -213,3 +189,5 @@ function g:ProjectConfig_CTags.LocalConfigCompleteModule(mod)
 
     call g:ProjectConfig_AddModuleAutocmd(a:mod, l:cmd)
 endfunction
+
+eval g:ProjectConfig_Generators->add(g:ProjectConfig_CTags)

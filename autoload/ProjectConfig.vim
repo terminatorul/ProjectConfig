@@ -6,11 +6,26 @@ if !exists('g:ProjectConfig_NERDTreeIntegration')
     let g:ProjectConfig_NERDTreeIntegration = v:true
 endif
 
+function s:LoadProjectConfigApi()
+    source `=fnameescape(expand('<script>:r') . 'Api.vim')`
+    source `=fnameescape(expand('<script>:r') . 'Api_DependencyWalker.vim')`
+    source `=fnameescape(expand('<script>:r') . 'Api_VimPath.vim')`
+    source `=fnameescape(expand('<script>:r') . 'Api_CTags.vim')`
+    source `=fnameescape(expand('<script>:r') . 'Api_CScope.vim')`
+    source `=fnameescape(expand('<script>:r') . 'Api_C_Cxx_Lib.vim')`
+
+    let s:LoadConfigApi = { -> 0 }
+endfunction
+
+let s:LoadConfigApi = funcref('s:LoadProjectConfigApi')
+
 function s:ApplyProjectConfigScript(full_path, project)
     if s:ProjectConfig_ApplyScript
 	return
     else
 	let s:ProjectConfig_ApplyScript = v:true
+
+	call s:LoadConfigApi()
 
 	try
 	    for l:configData in s:ProjectConfigScript
