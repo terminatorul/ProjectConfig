@@ -7,12 +7,14 @@ if !exists('g:ProjectConfig_NERDTreeIntegration')
 endif
 
 function s:LoadProjectConfigApi()
-    source `=fnameescape(expand('<script>:r') . 'Api.vim')`
-    source `=fnameescape(expand('<script>:r') . 'Api_DependencyWalker.vim')`
-    source `=fnameescape(expand('<script>:r') . 'Api_VimPath.vim')`
-    source `=fnameescape(expand('<script>:r') . 'Api_CTags.vim')`
-    source `=fnameescape(expand('<script>:r') . 'Api_CScope.vim')`
-    source `=fnameescape(expand('<script>:r') . 'Api_C_Cxx_Lib.vim')`
+    let l:script_base = expand('<script>:r')
+
+    source `=fnameescape(l:script_base . 'Api.vim')`
+    source `=fnameescape(l:script_base . 'Api_DependencyWalker.vim')`
+    source `=fnameescape(l:script_base . 'Api_VimPath.vim')`
+    source `=fnameescape(l:script_base . 'Api_CTags.vim')`
+    source `=fnameescape(l:script_base . 'Api_CScope.vim')`
+    source `=fnameescape(l:script_base . 'Api_C_Cxx_Lib.vim')`
 
     let s:LoadConfigApi = { -> 0 }
 endfunction

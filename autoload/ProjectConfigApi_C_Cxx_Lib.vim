@@ -84,9 +84,9 @@ function s:SDK_Include_Directory(Platform_Version, Version)
 endfunction
 
 const g:ProjectConfig_DefaultSDKVersion =
-	    \#{
-	    \	VS:  #{ Release: '*', Product: '*', Tools_Version: '*' },
-	    \	SDK: #{ Platform_Version: '[0-9]*', Version: '*' }
+	    \ {
+	    \	'VS':  { 'Release': '*', 'Product': '*', 'Tools_Version': '*' },
+	    \	'SDK': { 'Platform_Version': '[0-9]*', 'Version': '*' }
 	    \ }
 
 " Populates a module for Windows SDK headers and Windows Universal CRT (C Run-Time)

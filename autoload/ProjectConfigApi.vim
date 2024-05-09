@@ -53,7 +53,7 @@ let s:List_Compare = funcref('g:ProjectConfig_ListCompare')
 " duplicate values that appear sooner have priority and will be kept over
 " values that appear later
 function g:ProjectConfig_InPlaceAppendUnique(l1, l2, ...)
-    for l:element in [ a:l2 ]->extent(a:000)->flatten(1)
+    for l:element in [ a:l2 ]->extend(a:000)->flatten(1)
 	if a:l1->index(l:element) < 0
 	    eval a:l1->add(l:element)
 	endif
@@ -67,7 +67,7 @@ let s:InPlace_Append_Unique = funcref('g:ProjectConfig_InPlaceAppendUnique')
 " duplicate values that appear sooner have priority and will be kept over
 " values that appear later
 function g:ProjectConfig_ListAppendUnique(l1, l2, ...)
-    return s:InPlace_Append_Unique->call([ copy(l1), l2 ]->extend(a:000))
+    return s:InPlace_Append_Unique->call([ copy(a:l1), a:l2 ]->extend(a:000))
 endfunction
 
 let s:List_Append_Unique = funcref('g:ProjectConfig_ListAppendUnique')
@@ -138,9 +138,27 @@ function g:ProjectConfig_AddCurrentProject()
 	return
     endif
 
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project] = #{ config: { }, modules: { } }
+    let g:ProjectConfig_Modules[g:ProjectConfig_Project] = { 'config': { }, 'modules': { } }
 
-    call g:ProjectConfig_CTags.AddCurrentProject()
+    for l:generator in g:ProjectConfig_Generators
+	eval l:generator.AddProject(g:ProjectConfig_Project)
+    endfor
+endfunction
+
+" Construct and return a new empty project module with given name
+function g:ProjectConfig_Module(name, external = v:false)
+    let l:module = { 'name': a:name, 'external': a:external }
+
+    for l:scope in [ 'private', 'public', 'interface' ]
+	let l:module[l:scope] = { }
+
+	let l:module[l:scope].dir = [ ]
+	let l:module[l:scope].src = [ ]
+	let l:module[l:scope].inc = [ ]
+	let l:module[l:scope].deps = [ ]
+    endfor
+
+    return l:module
 endfunction
 
 " Add all modules to global g:ProjectConfig_Modules
@@ -148,47 +166,55 @@ endfunction
 function g:ProjectConfig_AddModule(module, ...)
     let l:module_list = [ a:module ]->extend(a:000)
 
-    for l:mod in l:module_list
-	if !has_key(l:mod, 'name')
+    for l:module in l:module_list
+	if !has_key(l:module, 'name')
 	    echoerr 'Missing module name'
 	    return
 	endif
 
-	if has_key(l:mod, 'dir')
-	    if type(l:mod.dir) != v:t_list
-		let l:mod.dir = [ l:mod.dir ]
-	    endif
-	else
-	    let l:mod.dir = [ ]
+	if !has_key(l:module, 'external')
+	    let l:module.external = v:false
 	endif
 
-	if has_key(l:mod, 'src')
-	    if type(l:mod.src) != v:t_list
-		let l:mod.src = [ l:mod.src ]
+	for l:scope_name in [ 'private', 'public', 'interface' ]
+	    if !has_key(l:module, l:scope_name)
+		let l:module[l:scope_name] = { }
 	    endif
-	else
-	    let l:mod.src = [ ]
-	endif
 
-	if has_key(l:mod, 'inc')
-	    if type(l:mod.inc) != v:t_list
-		let l:mod.inc = [ l:mod.inc ]
+	    let l:mod = l:module[l:scope_name]
+
+	    if has_key(l:mod, 'dir')
+		if type(l:mod.dir) != v:t_list
+		    let l:mod.dir = [ l:mod.dir ]
+		endif
+	    else
+		let l:mod.dir = [ ]
 	    endif
-	else
-	    let l:mod.inc = [ ]
-	endif
 
-	if has_key(l:mod, 'deps')
-	    if type(l:mod.deps) != v:t_list
-		let l:mod.deps = [ l:mod.deps ]
+	    if has_key(l:mod, 'src')
+		if type(l:mod.src) != v:t_list
+		    let l:mod.src = [ l:mod.src ]
+		endif
+	    else
+		let l:mod.src = [ ]
 	    endif
-	else
-	    let l:mod.deps = [ ]
-	endif
 
-	if !has_key(l:mod, 'external')
-	    let l:mod.external = v:false
-	endif
+	    if has_key(l:mod, 'inc')
+		if type(l:mod.inc) != v:t_list
+		    let l:mod.inc = [ l:mod.inc ]
+		endif
+	    else
+		let l:mod.inc = [ ]
+	    endif
+
+	    if has_key(l:mod, 'deps')
+		if type(l:mod.deps) != v:t_list
+		    let l:mod.deps = [ l:mod.deps ]
+		endif
+	    else
+		let l:mod.deps = [ ]
+	    endif
+	endfor
     endfor
 
     for l:generator in g:ProjectConfig_Generators
@@ -284,7 +310,7 @@ function s:AppendGlobalVimTagsAndPath(generators, module_list, external_modules,
 	    eval a:module_list->add(a:mod.name)
 	endif
 
-	for l:dependency_module in a:mod.deps
+	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps + a:mod['interface'].deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
 		call s:AppendGlobalVimTagsAndPath(a:generators, a:module_list, a:external_modules, l:dep_mod)
@@ -308,7 +334,7 @@ function s:Module_Inc_And_Tags_List_Per_Level(generators, mod_list, current_dept
     else
 	let l:depth_level_reached = v:false
 
-	for l:dependency_module in a:mod.deps
+	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps + a:mod['interface'].deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
 		let l:level_reached = s:Module_Inc_And_Tags_List_Per_Level(a:generators, a:mod_list, a:current_depth_level + 1, a:target_depth_level, a:external_modules, l:dep_mod)
@@ -337,7 +363,7 @@ function g:ProjectConfig_AddModuleAutocmd(mod, cmd, pat = [ ])
     let l:auto_cmd.pattern = a:pat
 
     if len(a:pat) == 0
-	for l:dir in a:mod.dir
+	for l:dir in a:mod.private.dir + a:mod['public'].dir
 	    eval l:auto_cmd.pattern->add(l:dir->fnamemodify(':p')->substitute('\\', '/', 'g') . '*')
 	endfor
     endif
@@ -351,17 +377,17 @@ function s:SetupLocalVimTagsAndPath(generators, module_list, mod)
     if a:module_list->index(a:mod.name) < 0
 	eval a:module_list->add(a:mod.name)
 
-	for l:dependency_module in a:mod.deps
+	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps
 	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
 		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
 		call s:SetupLocalVimTagsAndPath(a:generators, a:module_list, l:dep_mod)
 	    endif
 	endfor
 
-	call mapnew(a:generators, { _, val -> val.LocalConfigInitModule(a:mod) })
+	eval a:generators->mapnew({ _, val -> val.LocalConfigInitModule(a:mod) })
 	call s:Module_Inc_And_Tags_List(a:generators, v:true, a:mod)
 	call s:Module_Inc_And_Tags_List(a:generators, v:false, a:mod)
-	call mapnew(a:generators, { _, val -> val.LocalConfigCompleteModule(a:mod) })
+	eval a:generators->mapnew({ _, val -> val.LocalConfigCompleteModule(a:mod) })
     endif
 endfunction
 

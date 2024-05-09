@@ -17,7 +17,7 @@ endfunction
 function g:ProjectConfig_VimPath.UpdateGlobalConfig(mod)
     set path-=.
 
-    for l:inc_dir in a:mod.inc
+    for l:inc_dir in a:mod.private.inc + a:mod['public'].inc
 	execute 'set path-=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
 	execute 'set path^=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
     endfor
@@ -34,9 +34,9 @@ endfunction
 " Notify next node during traversal by depth level, top to bottom, of a subtree
 function g:ProjectConfig_VimPath.UpdateModuleLocalConfig(mod)
     if a:mod.external
-	eval self.external_inc_list->extend(a:mod.inc)
+	eval self.external_inc_list->extend(a:mod.private.inc + a:mod.public.inc)
     else
-	eval self.local_inc_list->extend(a:mod.inc)
+	eval self.local_inc_list->extend(a:mod.private.inc + a:mod.public.inc)
     endif
 endfunction
 
@@ -62,6 +62,9 @@ function g:ProjectConfig_VimPath.LocalConfigCompleteModule(mod)
     endif
 
     call g:ProjectConfig_AddModuleAutocmd(a:mod, l:cmd)
+endfunction
+
+function g:ProjectConfig_VimPath.AddProject(project_name)
 endfunction
 
 eval g:ProjectConfig_Generators->add(g:ProjectConfig_VimPath)

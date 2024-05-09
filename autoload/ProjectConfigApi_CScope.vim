@@ -7,7 +7,8 @@ let g:ProjectConfig_CScopeLookupOptions = [ ]
 let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
 let s:Shell_Escape = funcref('g:ProjectConfig_ShellEscape')
 
-" From https://sourceforge.net/p/cscope/cscope/ci/master/tree/src/dir.c#l519
+" List of default source file extensions, from cscope source code at:
+"   https://sourceforge.net/p/cscope/cscope/ci/master/tree/src/dir.c#l519
 "
 "   *.bp   breakpoint listing
 "   *.ch   Ingres
@@ -34,11 +35,11 @@ function s:AddCurrentProject()
     let l:project = g:ProjectConfig_Modules[g:ProjectConfig_Project]
 
     if !has_key(l:project, 'cscope_args')
-	l:project['cscope_args'] = [ ]
+	let l:project['cscope_args'] = [ ]
     endif
 
     if type(l:project.cscope_args) != v:t_list
-	l:project.cscope_args = [ l:project.cscope_args ]
+	let l:project.cscope_args = [ l:project.cscope_args ]
     endif
 endfunction
 
@@ -98,7 +99,7 @@ function s:Apply_Filters(list, filters)
 
     for l:filter in a:filters
 	for l:idx in mapnew(matchstrlist(a:list, l:filter), { _, val -> val.idx })->sort('n')->reverse()
-	    l:match_list->add(a:list->remove(l:idx))
+	    eval l:match_list->add(a:list->remove(l:idx))
 	endfor
 
 	if !a:list->len()
@@ -167,10 +168,8 @@ function s:Build_CScope_Database(project, module, connections)
 	echoerr 'Error generating cscope database ' . a:mod['cscope'].db . ' for module ' . a:mod.name
 		    \ . ': shell command exited with code ' . v:shell_error
     else
-	if l:reset_connection
-	    if has('win32') || has('win64')
-		cscope add `=fnameescape(a:mod['cscope'].db)`	    " this changes order of connections on Windows
-	    endif
+	if has('win32') || has('win64') || !l:reset_connection
+	    cscope add `=fnameescape(a:mod['cscope'].db)`	    " this changes order of connections on Windows
 	endif
     endif
 endfunction
@@ -265,3 +264,5 @@ function g:ProjectConfig_BuildAllCScopeDatabase(project, module, ...)
 	cscope reset
     endif
 endfunction
+
+" eval g:ProjectConfig_Generators->add(g:ProjectConfig_CScope)
