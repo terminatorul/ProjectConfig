@@ -8,8 +8,8 @@ if has('win32') || has('win64')
     eval g:ProjectConfig_CTagsCxxOptions->extend([ '-D_M_AMD64', '-D_WINDOWS', '-D_MBCS', '-D_WIN64', '-D_WIN32', '-D_MSC_VER=1933', '-D_MSC_FULL_VER=193331630'])
 endif
 
-let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
-let s:Shell_Escape = funcref('g:ProjectConfig_ShellEscape')
+let s:Join_Path = funcref(g:ProjectConfig_JoinPath)
+let s:Shell_Escape = funcref(g:ProjectConfig_ShellEscape)
 
 if !exists('g:ProjectConfig_Tags_Directory')
     let g:ProjectConfig_Tags_Directory = '.tags'
@@ -42,7 +42,7 @@ endfunction
 " Populate s:ProjectConfig_CTags_Path and s:ProjectConfig_CTags_Options
 let s:Expand_CTags_Command = funcref('s:Expand_CTags_Command_Line')
 
-let s:List_Append_Unique = funcref('g:ProjectConfig_ListAppendUnique')
+let s:List_Append_Unique = funcref(g:ProjectConfig_ListAppendUnique)
 
 function s:Build_Module_Tags(project, module)
     let l:project = g:ProjectConfig_Modules[a:project]
@@ -159,7 +159,7 @@ function g:ProjectConfig_CTags.LocalConfigInit()
 endfunction
 
 " Will be called with external modules first, and local modules after,
-" each time following in-depth traversal of the module tree
+" each time following top-down in-depth traversal of the module tree
 function g:ProjectConfig_CTags.UpdateGlobalConfig(mod)
     execute 'set tags ^=' . a:mod.private.tags->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
 endfunction
@@ -186,7 +186,7 @@ function g:ProjectConfig_CTags.LocalConfigCompleteModule(mod)
     let l:cmd = 'setlocal tags^=' . l:tags_list->map({ _, val -> val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g') })->join(',')
 
     if len(self.global_tags)
-	let l:cmd .= ',' . l:self.global_tags
+	let l:cmd ..= ',' . l:self.global_tags
     endif
 
     call g:ProjectConfig_AddModuleAutocmd(a:mod, l:cmd)

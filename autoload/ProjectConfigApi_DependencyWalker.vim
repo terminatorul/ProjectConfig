@@ -1,7 +1,7 @@
 vim9script
 
-var InPlace_Append_Unique: func = funcref('g:ProjectConfig_InPlaceAppendUnique')
-var InPlace_Prepend_Unique: func = funcref('g:ProjectConfig_InPlacePrependUnique')
+var InPlace_Append_Unique: func = g:ProjectConfig_InPlaceAppendUnique
+var InPlace_Prepend_Unique: func = g:ProjectConfig_InPlacePrependUnique
 
 var DependencyWalker: dict<any> =
 	    \ {
@@ -12,19 +12,21 @@ var DependencyWalker: dict<any> =
 
 type PropertyList = list<any>
 type NameList = list<string>
-type Module = dict<any>
-type Project = dict<any>
+export type Module = dict<any>
+export type Project = dict<any>
 export type CallbackFunction = func(number, bool, Module, NameList): void
 export type AccessorFunction = func(number, bool, Module, NameList): PropertyList
 export type ReduceFunction   = func(number, PropertyList, PropertyList): void
 export type DescendFunction  = func(number, Module): NameList
 
 export enum TraversalMode
-    None,
-    ByLevel_TopDown,
-    ByLevel_ButtomUp,
-    InDepth_TopDown,
-    InDepth_ButtomUp
+    ByLevel,
+    InDepth
+endenum
+
+export enum TraverseDirection
+    TopDown,
+    ButtomUp
 endenum
 
 def DependencyWalker_New(self: dict<any>, project: Project, Callback_Fn: CallbackFunction, Descend_Fn: DescendFunction): dict<any>
@@ -103,11 +105,11 @@ def DependencyWalker_Traverse_Dependencies(self: dict<any>, modules: list<Module
     endif
 enddef
 
-def g:ProjectConfig_FullDescend(current_level: number, module: Module): list<string>
+def FullDescend(current_level: number, module: Module): list<string>
     return module['interface'].deps + module['public'].deps + module['private'].deps
 enddef
 
-var FullDescend: func(number, dict<any>): list<string> = funcref('g:ProjectConfig_FullDescend')
+g:ProjectConfig_FullDescend = FullDescend
 
 def g:ProjectConfig_SpecificDescend(current_level: number, module: Module): list<string>
     if current_level == 1
@@ -117,7 +119,7 @@ def g:ProjectConfig_SpecificDescend(current_level: number, module: Module): list
     return module['interface'].deps + module['public'].deps
 enddef
 
-var SpecificDescend: DescendFunction = funcref('g:ProjectConfig_SpecificDescend')
+var SpecificDescend: DescendFunction = g:ProjectConfig_SpecificDescend
 
 # Enumerate each dependency of the given modules, starting with the bottom
 # level of the dependency tree, going up level by level, until the top level
@@ -153,7 +155,7 @@ def g:ProjectConfig_TraverseAllDependencies(Callback_Fn: CallbackFunction, proje
     return deps_walker.module_list
 enddef
 
-def CollectProperties_DefaultReduce(state: dict<any>, level: number, existing_list: PropertyList, new_list: PropertyList): void
+def Default_Reduce(state: dict<any>, level: number, existing_list: PropertyList, new_list: PropertyList): void
     if level < state.level
 	state.level = level
 
@@ -170,10 +172,6 @@ def CollectProperties_DefaultReduce(state: dict<any>, level: number, existing_li
 
     InPlace_Append_Unique(existing_list, new_list)
 enddef
-
-var Default_Reduce = funcref('CollectProperties_DefaultReduce')
-
-# var CollectProperties: dict<any> = { }
 
 class CollectProperties
     var properties:  list<PropertyList>
@@ -213,9 +211,16 @@ class CollectProperties
     enddef
 endclass
 
-def g:ProjectConfig_CollectExplicitProperties(accessor_fn: list<AccessorFunction>, reduce_fn: list<ReduceFunction>, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
+export def CollectPropertiesWithReducer(
+	    accessors:  list<AccessorFunction>,
+	    reducers:   list<ReduceFunction>,
+	    project:    Project,
+	    module:     Module,
+	    ...modules: list<Module>
+	): list<PropertyList>
+
     var module_list: list<Module> = [ module ]->extend(modules)
-    var collect_props: CollectProperties = CollectProperties.new(accessor_fn, reduce_fn)
+    var collect_props: CollectProperties = CollectProperties.new(accessors, reducers)
     var deps_walker: dict<any> = DependencyWalker_New(DependencyWalker, project, collect_props.Dependency_Module, SpecificDescend)
 
     deps_walker.target_level = module_list->mapnew((_, mod) => DependencyWalker_Module_Tree_Depth(deps_walker, mod))->max()
@@ -230,13 +235,13 @@ def g:ProjectConfig_CollectExplicitProperties(accessor_fn: list<AccessorFunction
     return collect_props.properties
 enddef
 
-var Collect_Explicit_Properties = funcref('g:ProjectConfig_CollectExplicitProperties')
+g:ProjectConfig_CollectPropertiesWithReducer = CollectPropertiesWithReducer
 
 def g:ProjectConfig_CollectProperties(accessor_fn: list<AccessorFunction>, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
-    return Collect_Explicit_Properties->call([ accessor_fn, v:none, project, module ]->extend(modules))
+    return CollectPropertiesWithReducer->call([ accessor_fn, v:none, project, module ]->extend(modules))
 enddef
 
-def Default_Accessor_Function(members: any, level: number, is_duplicate: bool, module: Module, cyclic_deps: NameList): PropertyList
+def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Module, cyclic_deps: NameList): PropertyList
     var values: PropertyList = [ ]
     var scope_list: list<dict<any>>
 
@@ -261,6 +266,10 @@ def Default_Accessor_Function(members: any, level: number, is_duplicate: bool, m
 	    endif
 	endfor
 
+# 	def g:ProjectConfig_Collect_Other_Properties(accessor_fn: list<AccessorFunction>, project: Project, other_module: Module, ...modules: list<Module>): list<PropertyList>
+# 	    return CollectPropertiesWithReducer->call([ accessor_fn, v:none, project, other_module ]->extend(modules))
+# 	enddef
+
 	if !key_missing
 	    if type(value) == v:t_list
 		values->extend(value)
@@ -273,13 +282,11 @@ def Default_Accessor_Function(members: any, level: number, is_duplicate: bool, m
     return values
 enddef
 
-var Default_Accessor = funcref('Default_Accessor_Function')
-
 def g:ProjectConfig_ModuleProperties(members: any, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
     var member_list: list<string> = type(members) == v:t_list ? members : [ members ]
     var accessor_fn: list<AccessorFunction> = member_list->mapnew((_, member) => funcref(Default_Accessor, [ member ]))
 
-    return Collect_Explicit_Properties->call([ accessor_fn, null_list, project, module ]->extend(modules))
+    return CollectPropertiesWithReducer->call([ accessor_fn, null_list, project, module ]->extend(modules))
 enddef
 
 # defcompile

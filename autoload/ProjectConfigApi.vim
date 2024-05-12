@@ -1,429 +1,529 @@
-let g:ProjectConfig_DirectorySeparator = exists('+shellslash') ? '\' : '/'
-let s:sep = g:ProjectConfig_DirectorySeparator
+vim9script
 
-" Join multiple path components using the directory separator in
-" g:ProjectConfig_DirectorySeparator
-function g:ProjectConfig_JoinPath(...)
-    return join(a:000, s:sep)
-endfunction
+# import autoload './ProjectConfigApi_DependencyWalker.vim' as DependencyWalker
 
-let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
+export const HasWindows: bool = has('win16') || has('win32') || has('win64')
+export const DirectorySeparator: string = exists('+shellslash') ? '\' : '/'
+export const DevNull: string = HasWindows ?  'NUL' : '/dev/null'
 
-let g:ProjectConfig_Generators = [ ]
-let s:generators = g:ProjectConfig_Generators
+g:ProjectConfig_DirectorySeparator = DirectorySeparator
+g:ProjectConfig_DevNull = DevNull
 
-" Element-wise comparison for two lists, returns -1, 0, or 1
-function g:ProjectConfig_ListCompare(list1, list2)
-    let l:len1 = len(a:list1)
-    let l:len2 = len(a:list2)
+# Join multiple path components using the directory separator in
+# g:ProjectConfig_DirectorySeparator
+export def JoinPath(...components: list<string>): string
+    return join(components, DirectorySeparator)
+enddef
 
-    if l:len1 < l:len2
-	let l:len = l:len1
-    else
-	let l:len = l:len2
-    endif
+g:ProjectConfig_JoinPath = JoinPath
 
-    let l:index = 0
+g:ProjectConfig_Generators = [ ]
 
-    while l:index < l:len
-	if a:list1[l:index] < a:list2[l:index]
+export type Module = dict<any>
+export type Project = dict<any>
+
+export interface Generator
+    def AddProject(project: Project, project_name: string): void
+    def SetConfigEntry(project: Project, name: string): void
+    def AddModule(project: Project, module: Module, ...modules: list<Module>): void
+
+    def LocalConfigInit(): void
+    def UpdateGlobalConfig(module: Module): void
+    def LocalConfigInitModule(module: Module): void
+    def UpdateLocalModuleConfig(module: Module): void
+    def LocalConfigCompleteModule(module: Module): void
+endinterface
+
+class DispatchGenerator implements Generator
+    var generators: list<dict<any>>
+
+    def AddProject(project: Project, name: string): void
+	this.generators->foreach((_, gen) => gen.AddProject(name))
+    enddef
+
+    def SetConfigEntry(project: Project, name: string): void
+	this.generators->foreach((_, gen) => gen.SetConfigEntry(name))
+    enddef
+
+    def AddModule(project: Project, module: Module, ...modules: list<Module>): void
+	this.generators->foreach((_, gen) => gen.AddModule->call([ module ]->extend(modules)))
+    enddef
+
+    def LocalConfigInit(): void
+	this.generators->foreach((_, gen) => gen.LocalConfigInit())
+    enddef
+
+    def UpdateGlobalConfig(module: Module): void
+	this.generators->foreach((_, gen) => gen.UpdateGlobalConfig(module))
+    enddef
+
+    def LocalConfigInitModule(module: Module): void
+	this.generators->foreach((_, gen) => gen.LocalConfigInitModule(module))
+    enddef
+
+    def UpdateLocalModuleConfig(module: Module): void
+	this.generators->foreach((_, gen) => gen.UpdateLocalModuleConfig(module))
+    enddef
+
+    def LocalConfigCompleteModule(module: Module): void
+	this.generators->foreach((_, gen) => gen.LocalConfigCompleteModule(module))
+    enddef
+endclass
+
+export var Generators: list<Generator> = [ DispatchGenerator.new(g:ProjectConfig_Generators) ]
+
+# Element-wise comparison for two lists, returns -1, 0, or 1
+export def ListCompare(list1: list<any>, list2: list<any>): number
+    var len1: number = list1->len()
+    var len2: number = list2->len()
+    var len:  number = [ len1, len2 ]->min()
+
+    var index: number = 0
+
+    while index < len
+	if list1[index] < list2[index]
 	    return -1
 	else
-	    if a:list1[l:index] > a:list2[l:index]
+	    if list1[index] > list2[index]
 		return 1
 	    endif
 	endif
 
-	let l:index = l:index + 1
+	++index
     endwhile
 
-    if l:len1 < l:len2
+    if len1 < len2
 	return -1
     else
-	if l:len1 > l:len2
+	if len1 > len2
 	    return 1
 	endif
     endif
 
     return 0
-endfunction
+enddef
 
-let s:List_Compare = funcref('g:ProjectConfig_ListCompare')
+g:ProjectConfig_ListCompare =  ListCompare
 
-" duplicate values that appear sooner have priority and will be kept over
-" values that appear later
-function g:ProjectConfig_InPlaceAppendUnique(l1, l2, ...)
-    for l:element in [ a:l2 ]->extend(a:000)->flatten(1)
-	if a:l1->index(l:element) < 0
-	    eval a:l1->add(l:element)
+# duplicate values that appear sooner have priority and will be kept over
+# values that appear later
+export def InPlaceAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    for element in [ l2 ]->extend(extra)->flattennew(1)
+	if l1->index(element) < 0
+	    l1->add(element)
 	endif
     endfor
 
-    return a:l1
-endfunction
+    return l1
+enddef
 
-let s:InPlace_Append_Unique = funcref('g:ProjectConfig_InPlaceAppendUnique')
+g:ProjectConfig_InPlaceAppendUnique =  InPlaceAppendUnique
 
-" duplicate values that appear sooner have priority and will be kept over
-" values that appear later
-function g:ProjectConfig_ListAppendUnique(l1, l2, ...)
-    return s:InPlace_Append_Unique->call([ copy(a:l1), a:l2 ]->extend(a:000))
-endfunction
+# duplicate values that appear sooner have priority and will be kept over
+# values that appear later
+export def ListAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    return InPlaceAppendUnique->call([ copy(l1), l2 ]->extend(extra))
+enddef
 
-let s:List_Append_Unique = funcref('g:ProjectConfig_ListAppendUnique')
+g:ProjectConfig_ListAppendUnique =  ListAppendUnique
 
-" duplicate values that appear sooner in the target list have priority over
-" values that appear later. The element order in l2 + ... is otherwise
-" preserved
-function g:ProjectConfig_InPlacePrependUnique(l1, l2, ...)
-    for l:element in [ a:l2 ]->extend(a:000)->flatten(1)->reverse()
-	let l:element_index = a:l1->index(l:element)
+# duplicate values that appear sooner in the target list have priority over
+# values that appear later. The element order in l2 + ... is otherwise
+# preserved
+export def InPlacePrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    for element in [ l2 ]->extend(extra)->flattennew(1)->reverse()
+	var element_index: number = l1->index(element)
 
-	if l:element_index >= 0
-	    eval a:l1->remove(l:element_index)
+	if element_index >= 0
+	    l1->remove(element_index)
 	endif
 
-	eval a:l1->insert(l:element)
+	eval l1->insert(element)
     endfor
 
-    return a:l1
-endfunction
+    return l1
+enddef
 
-let s:InPlace_Prepend_Unique = funcref('g:ProjectConfig_InPlacePrependUnique')
+g:ProjectConfig_InPlacePrependUnique = InPlacePrependUnique
 
-" duplicate values that appear sooner in the target list have priority over
-" values that appear later. The element order in l2 + ... is otherwise
-" preserved
-function g:ProjectConfig_ListPrependUnique(l1, l2, ...)
-    return s:InPlace_Prepend_Unique->call([ copy(l1), l2 ]->extend(a:000))
-endfunction
+# duplicate values that appear sooner in the target list have priority over
+# values that appear later. The element order in l2 + ... is otherwise
+# preserved
+export def ListPrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    return InPlacePrependUnique->call([ copy(l1), l2 ]->extend(extra))
+enddef
 
-let s:List_Prepend_Unique = funcref('g:ProjectConfig_ListPrependUnique')
+g:ProjectConfig_ListPrependUnique = ListPrependUnique
 
-function g:ProjectConfig_ExpandModuleSources(project, module)
-    let l:source_list = [ ]
+export def ExpandModuleSources(module: Module): list<string>
+    var source_list: list<string> = [ ]
 
-    for l:source_glob in a:module.src + a:module.inc
-	let l:run_filter = v:true
+    for source_glob in module.src
+	var run_filter: bool = true
+	var glob_pattern: string
 
-	if isdirectory(l:source_glob)
-	    if a:module.recurse
-		let l:source_glob .= '/**'
-		let l:run_filter = v:false
+	if isdirectory(source_glob)
+	    if module.recurse
+		glob_pattern = source_glob .. '/**'
+		run_filter = false
 	    else
-		l:source_glob .= '/*'
+		glob_pattern = source_glob .. '/*'
 	    endif
+	else
+	    glob_pattern = source_glob
 	endif
 
-	let l:glob_list = l:source_glob->glob(v:true, v:true)
+	var glob_list: list<string> = glob_pattern->glob(true, true)
 
-	if l:run_filter
-	    eval l:glob_list->filter({ _, val -> !isdirectory(val) })
+	if run_filter
+	    glob_list->filter((_, val) => !isdirectory(val))
 	endif
 
-	call s:InPlace_Append_Unique(l:source_list, l:glob_list)
+	InPlaceAppendUnique(source_list, glob_list)
     endfor
 
-    return l:source_list
-endfunction
+    return source_list
+enddef
 
-let g:ProjectConfig_Modules = { }
+g:ProjectConfig_ExpandModuleSources = ExpandModuleSources
+
+export var Projects: dict<Project> = { }
+
+g:ProjectConfig_Modules = Projects
 
 if !exists('g:ProjectConfig_CleanPathOption')
-    let g:ProjectConfig_CleanPathOption = v:true
+    g:ProjectConfig_CleanPathOption = true
 endif
 
-function g:ProjectConfig_AddCurrentProject()
-    if has_key(g:ProjectConfig_Modules, g:ProjectConfig_Project)
-	return
+export def AddCurrentProject(): Project
+    if Projects->has_key(g:ProjectConfig_Project)
+	return Projects[g:ProjectConfig_Project]
     endif
 
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project] = { 'config': { }, 'modules': { } }
+    Projects[g:ProjectConfig_Project] = { 'config': { }, 'modules': { } }
 
-    for l:generator in g:ProjectConfig_Generators
-	eval l:generator.AddProject(g:ProjectConfig_Project)
-    endfor
-endfunction
+    var project: Project = Projects[g:ProjectConfig_Project]
 
-" Construct and return a new empty project module with given name
-function g:ProjectConfig_Module(name, external = v:false)
-    let l:module = { 'name': a:name, 'external': a:external }
-
-    for l:scope in [ 'private', 'public', 'interface' ]
-	let l:module[l:scope] = { }
-
-	let l:module[l:scope].dir = [ ]
-	let l:module[l:scope].src = [ ]
-	let l:module[l:scope].inc = [ ]
-	let l:module[l:scope].deps = [ ]
+    for generator in Generators
+	generator.AddProject(project, g:ProjectConfig_Project)
     endfor
 
-    return l:module
-endfunction
+    return project
+enddef
 
-" Add all modules to global g:ProjectConfig_Modules
-" and fill in default fields for a module
-function g:ProjectConfig_AddModule(module, ...)
-    let l:module_list = [ a:module ]->extend(a:000)
+g:ProjectConfig_AddCurrentProject = AddCurrentProject
 
-    for l:module in l:module_list
-	if !has_key(l:module, 'name')
+# Construct and return a new empty project module with given name
+def g:ProjectConfig_Module(name: string, external: bool = false): Module
+    var module: Module = { 'name': name, 'external': external }
+
+    for scope in [ 'private', 'public', 'interface' ]
+	module[scope] = { }
+
+	var module_scope: dict<any> = module[scope]
+
+	module_scope.dir = [ ]
+	module_scope.src = [ ]
+	module_scope.inc = [ ]
+	module_scope.deps = [ ]
+    endfor
+
+    return module
+enddef
+
+# Add all modules to global g:ProjectConfig_Modules
+# and fill in default fields for a module
+export def AddModule(module: Module, ...modules: list<Module>)
+    var module_list: list<Module> = [ module ]->extend(modules)
+
+    for current_module in module_list
+	if !current_module->has_key('name')
 	    echoerr 'Missing module name'
 	    return
 	endif
 
-	if !has_key(l:module, 'external')
-	    let l:module.external = v:false
+	if !current_module->has_key('external')
+	    current_module.external = false
 	endif
 
-	for l:scope_name in [ 'private', 'public', 'interface' ]
-	    if !has_key(l:module, l:scope_name)
-		let l:module[l:scope_name] = { }
+	for scope_name in [ 'private', 'public', 'interface' ]
+	    if !current_module->has_key(scope_name)
+		current_module[scope_name] = { }
 	    endif
 
-	    let l:mod = l:module[l:scope_name]
+	    var module_scope = current_module[scope_name]
 
-	    if has_key(l:mod, 'dir')
-		if type(l:mod.dir) != v:t_list
-		    let l:mod.dir = [ l:mod.dir ]
+	    if module_scope->has_key('dir')
+		if type(module_scope.dir) != v:t_list
+		    module_scope.dir = [ module_scope.dir ]
 		endif
 	    else
-		let l:mod.dir = [ ]
+		module_scope.dir = [ ]
 	    endif
 
-	    if has_key(l:mod, 'src')
-		if type(l:mod.src) != v:t_list
-		    let l:mod.src = [ l:mod.src ]
+	    if module_scope->has_key('src')
+		if type(module_scope.src) != v:t_list
+		    module_scope.src = [ module_scope.src ]
 		endif
 	    else
-		let l:mod.src = [ ]
+		module_scope.src = [ ]
 	    endif
 
-	    if has_key(l:mod, 'inc')
-		if type(l:mod.inc) != v:t_list
-		    let l:mod.inc = [ l:mod.inc ]
+	    if module_scope->has_key('inc')
+		if type(module_scope.inc) != v:t_list
+		    module_scope.inc = [ module_scope.inc ]
 		endif
 	    else
-		let l:mod.inc = [ ]
+		module_scope.inc = [ ]
 	    endif
 
-	    if has_key(l:mod, 'deps')
-		if type(l:mod.deps) != v:t_list
-		    let l:mod.deps = [ l:mod.deps ]
+	    if module_scope->has_key('deps')
+		if type(module_scope.deps) != v:t_list
+		    module_scope.deps = [ module_scope.deps ]
 		endif
 	    else
-		let l:mod.deps = [ ]
+		module_scope.deps = [ ]
 	    endif
 	endfor
     endfor
 
-    for l:generator in g:ProjectConfig_Generators
-	eval l:generator.AddModule->call(l:module_list)
+    for generator in Generators
+	generator.AddModule->call(module_list)
     endfor
 
-    call g:ProjectConfig_AddCurrentProject()
+    var project: Project = AddCurrentProject()
 
-    for l:mod in l:module_list
-	let g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:mod.name] = l:mod
+    for current_module in module_list
+	project.modules[current_module.name] = current_module
     endfor
-endfunction
+enddef
 
-function g:ProjectConfig_ParsePathOption(value)
-    let l:value_list = [ ]
-    let l:value_str = ''
-    let l:escape_char = v:false
+g:ProjectConfig_AddModule = AddModule
 
-    for l:ch in a:value
-	if l:escape_char
-	    if l:ch == ' ' || l:ch == '\' || l:ch == ','
-		let l:value_str .= l:ch
+export def AddModuleAutoCmd(module: Module, commands: any, pattern: list<string>)
+    var auto_cmd: dict<any> = { }
+
+    auto_cmd.group   = g:ProjectConfig_Project
+    auto_cmd.event   = module.external ? [ 'BufRead' ] : [ 'BufNewFile', 'BufRead' ]
+    auto_cmd.cmd     = commands
+    auto_cmd.pattern = pattern
+
+    if pattern->len() == 0
+	var dir_pattern: string = module.recurse ? '**' : '*'
+
+	for dir_name in module['private'].dir + module['public'].dir
+	    auto_cmd.pattern->add(dir_name->fnamemodify(':p')->substitute('\\', '/', 'g') .. dir_pattern)
+	endfor
+    endif
+
+    # echomsg auto_cmd
+
+    [ auto_cmd ]->autocmd_add()
+enddef
+
+g:ProjectConfig_AddModuleAutoCmd = AddModuleAutoCmd
+
+export def ParsePathOption(value: string): list<string>
+    var value_list: list<string> = [ ]
+    var value_str: string = ''
+    var escape_char: bool = false
+
+    for char in value
+	if escape_char
+	    if char == ' ' || char == '\' || char == ','
+		value_str ..= char
 	    else
-		let l:value_str .= '\'
-		let l:value_str .= l:ch
+		value_str ..= '\'
+		value_str ..= char
 	    endif
 
-	    let l:escape_char = v:false
+	    escape_char = false
 	else
-	    if l:ch == '\'
-		let l:escape_char = v:true
+	    if char == '\'
+		escape_char = true
 	    else
-		if l:ch == ','
-		    eval l:value_list->add(l:value_str)
-		    let l:value_str = ''
+		if char == ','
+		    value_list->add(value_str)
+		    value_str = ''
 		else
-		    let l:value_str .= l:ch
+		    value_str ..= char
 		endif
 	    endif
 	endif
     endfor
 
-    eval l:value_list->add(l:value_str)
+    value_list->add(value_str)
 
-    return l:value_list
-endfunction
+    return value_list
+enddef
 
-function g:ProjectConfig_ShowPath(value = v:none)
-    for l:dir in g:ProjectConfig_ParsePathOption(a:value is v:none ? empty(&l:path) ? &g:path : &l:path : a:value)
-	echo l:dir
+g:ProjectConfig_ParsePathOption = ParsePathOption
+
+export def ShowPath(value = v:none): void
+    for dir in g:ProjectConfig_ParsePathOption(value ?? &l:path ?? &g:path)
+	echo dir
     endfor
-endfunction
+enddef
 
-function g:ProjectConfig_ShellEscape(arg)
-    if match(a:arg, '\v^[a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/]+$') >= 0
-	return a:arg
+g:ProjectConfig_ShowPath = ShowPath
+
+export def ShellEscape(param: string): string
+    if match(param, '\v^[a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/]+$') >= 0
+	return param
     endif
 
-    " Special case for Windows, when command line argument ends with '\' and
-    " also needs to be quoted, because the resulting '\"' at the end actually
-    " escapes the double-quote character
+    # Special case for Windows, when command line argument ends with '\' and
+    # also needs to be quoted, because the resulting '\"' at the end actually
+    # escapes the double-quote character
 
-    if has('win32') || has('win64')
-	let l:len = len(a:arg) - 1
+    if HasWindows
+	var arg_len: number = param->len() - 1
 
-	while l:len >= 0 && a:arg[l:len] == '\'
-	    let l:len = l:len - 1
+	while arg_len >= 0 && param[arg_len] == '\'
+	    arg_len = arg_len - 1
 	endwhile
 
-	if l:len >= 0
-	    return shellescape(a:arg[0:l:len]) . a:arg[l:len + 1:]
+	if arg_len >= 0
+	    return param[0 : arg_len]->shellescape() .. param[arg_len + 1 : ]
 	endif
     endif
 
-    return shellescape(a:arg)
-endfunction
+    return param->shellescape()
+enddef
 
-let s:Shell_Escape = funcref('g:ProjectConfig_ShellEscape')
+g:ProjectConfig_ShellEscape = ShellEscape
 
-function g:ProjectConfig_SetConfigEntry(name, value)
-    call g:ProjectConfig_AddCurrentProject()
+export def SetConfigEntry(name: string, value: any): void
+    var project: Project = AddCurrentProject()
 
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name] = a:value
+    project.config[name] = value
 
-    for l:generator in g:ProjectConfig_Generators
-	call l:generator.SetConfigEntry(a:name)
+    for generator in Generators
+	generator.SetConfigEntry(project, name)
     endfor
-endfunction
+enddef
 
-function s:AppendGlobalVimTagsAndPath(generators, module_list, external_modules, mod)
-    if a:module_list->index(a:mod.name) < 0
-	if !!a:mod.external == !!a:external_modules
-	    eval a:module_list->add(a:mod.name)
+g:ProjectConfig_SetConfigEntry = SetConfigEntry
+
+def GlobalUpdate_InDepth_ButtomUp_Traverse_Module(
+	    generators:		list<Generator>,
+	    processed_modules:	list<string>,
+	    external_modules:	bool,
+	    module:		Module
+	):  void
+    if processed_modules->index(module.name) < 0
+	if !!module.external == !!external_modules
+	    processed_modules->add(module.name)
 	endif
 
-	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps + a:mod['interface'].deps
-	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
-		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		call s:AppendGlobalVimTagsAndPath(a:generators, a:module_list, a:external_modules, l:dep_mod)
+	var project: Project = AddCurrentProject()
+
+	for dependency_module in module['private'].deps + module['public'].deps + module['interface'].deps
+	    if project.modules->has_key(dependency_module)
+		GlobalUpdate_InDepth_ButtomUp_Traverse_Module(
+			    generators,
+			    processed_modules,
+			    external_modules,
+			    project.modules[dependency_module]
+			)
 	    endif
 	endfor
 
-	if !!a:mod.external == !!a:external_modules
-	    call mapnew(a:generators, { _, val -> val.UpdateGlobalConfig(a:mod) })	" in-depth traversal for dependency tree
+	if !!module.external == !!external_modules
+	    generators->foreach(( _, gen) => gen.UpdateGlobalConfig(module))
 	endif
     endif
-endfunction
+enddef
 
-function s:Module_Inc_And_Tags_List_Per_Level(generators, mod_list, current_depth_level, target_depth_level, external_modules, mod)
-    if a:current_depth_level == a:target_depth_level
-	if !!a:mod.external == !!a:external_modules && a:mod_list->index(a:mod.name) < 0
-	    call mapnew(a:generators, { _, val -> val.UpdateModuleLocalConfig(a:mod) })
-	    eval a:mod_list->add(a:mod.name)
+def LocalUpdate_Traverse_Module_SubLevel(
+	    generators:		 list<Generator>,
+	    processed_modules:	 list<Module>,
+	    current_depth_level: number,
+	    target_depth_level:	 number,
+	    external_modules:	 bool,
+	    module:		 Module
+	):  bool
+    if current_depth_level == target_depth_level
+	if !!module.external == !!external_modules && processed_modules->index(module.name) < 0
+	    processed_modules->add(module.name)
+	    generators->foreach((_, gen) => gen.UpdateModuleLocalConfig(module))
 	endif
 
-	return v:true
+	return true
     else
-	let l:depth_level_reached = v:false
+	var target_depth_reached: bool = false
+	var project = AddCurrentProject()
 
-	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps + a:mod['interface'].deps
-	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
-		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		let l:level_reached = s:Module_Inc_And_Tags_List_Per_Level(a:generators, a:mod_list, a:current_depth_level + 1, a:target_depth_level, a:external_modules, l:dep_mod)
-		let l:depth_level_reached = l:depth_level_reached || l:level_reached
+	for dependency_module in module['private'].deps + module['public'].deps + module['interface'].deps
+	    if project.modules->has_key(dependency_module)
+		var level_reached: bool = LocalUpdate_Traverse_Module_SubLevel(
+			    generators,
+			    processed_modules,
+			    current_depth_level + 1,
+			    target_depth_level,
+			    external_modules,
+			    project.modules[dependency_module]
+			)
+
+		target_depth_reached = target_depth_reached || level_reached
 	    endif
 	endfor
 
-	return l:depth_level_reached
+	return target_depth_reached
     endif
-endfunction
+enddef
 
-function s:Module_Inc_And_Tags_List(generators, external_modules, mod)
-    let l:depth_level = 0
-    let l:mod_list = [ ]
+def LocalUpdate_Level_TopDown_Traverse_Module(generators: list<Generator>, external_modules: bool, module: Module): void
+    var depth_level: number = 1
+    var processed_modules: list<Module> = [ ]
 
-    while s:Module_Inc_And_Tags_List_Per_Level(a:generators, l:mod_list, 0, l:depth_level, a:external_modules, a:mod)
-	let l:depth_level = l:depth_level + 1
+    while LocalUpdate_Traverse_Module_SubLevel(generators, processed_modules, 1, depth_level, external_modules, module)
+	++depth_level
     endwhile
-endfunction
+enddef
 
-function g:ProjectConfig_AddModuleAutocmd(mod, cmd, pat = [ ])
-    let l:auto_cmd = { }
-    let l:auto_cmd.group   = g:ProjectConfig_Project
-    let l:auto_cmd.event   = a:mod.external ? [ 'BufRead' ] : [ 'BufNewFile', 'BufRead' ]
-    let l:auto_cmd.cmd     = a:cmd
-    let l:auto_cmd.pattern = a:pat
+def LocalUpdate_InDepth_ButtomUp_ReTraverse(generators: list<Generator>, processed_modules: list<string>, module: Module)
+    if processed_modules->index(module.name) < 0
+	processed_modules->add(module.name)
 
-    if len(a:pat) == 0
-	for l:dir in a:mod.private.dir + a:mod['public'].dir
-	    eval l:auto_cmd.pattern->add(l:dir->fnamemodify(':p')->substitute('\\', '/', 'g') . '*')
-	endfor
-    endif
+	var project = AddCurrentProject()
 
-    " echomsg l:auto_cmd
-
-    eval [ l:auto_cmd ]->autocmd_add()
-endfunction
-
-function s:SetupLocalVimTagsAndPath(generators, module_list, mod)
-    if a:module_list->index(a:mod.name) < 0
-	eval a:module_list->add(a:mod.name)
-
-	for l:dependency_module in a:mod.private.deps + a:mod['public'].deps
-	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:dependency_module)
-		let l:dep_mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:dependency_module]
-		call s:SetupLocalVimTagsAndPath(a:generators, a:module_list, l:dep_mod)
+	for dependency_module in module['private'].deps + module['public'].deps
+	    if project.modules->has_key(dependency_module)
+		LocalUpdate_InDepth_ButtomUp_ReTraverse(generators, processed_modules, project.modules[dependency_module])
 	    endif
 	endfor
 
-	eval a:generators->mapnew({ _, val -> val.LocalConfigInitModule(a:mod) })
-	call s:Module_Inc_And_Tags_List(a:generators, v:true, a:mod)
-	call s:Module_Inc_And_Tags_List(a:generators, v:false, a:mod)
-	eval a:generators->mapnew({ _, val -> val.LocalConfigCompleteModule(a:mod) })
+	generators->foreach((_, gen) => gen.LocalConfigInitModule(module))
+	LocalUpdate_Level_TopDown_Traverse_Module(generators, true, module)
+	LocalUpdate_Level_TopDown_Traverse_Module(generators, false, module)
+	generators->foreach((_, gen) => gen.LocalConfigCompleteModule(module))
     endif
-endfunction
+enddef
 
-function g:ProjectConfig_EnableVimTags(module, ...)
-    let s:generators =
-		\ [
-		\	copy(g:ProjectConfig_VimPath),
-		\	copy(g:ProjectConfig_CTags)
-		\ ]
+def EnableProjectModules(module_name: string, ...module_names: list<string>): void
+    Generators->foreach((_, gen) => gen.LocalConfigInit())
 
-    call mapnew(s:generators, { _, val -> val.LocalConfigInit() })
+    var project = AddCurrentProject()
+    var processed_modules: list<string> = [ ]
 
-    let l:module_list = [ ]
-
-    for l:external in [ v:true, v:false ]
-	for l:module in [ a:module ] + a:000
-	    if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:module)
-		let l:mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:module]
-		call s:AppendGlobalVimTagsAndPath(s:generators, l:module_list, l:external, l:mod)
+    for external in [ true, false ]
+	for name in [ module_name ]->extend(module_names)
+	    if project.modules->has_key(name)
+		GlobalUpdate_InDepth_ButtomUp_Traverse_Module(Generators, processed_modules, external, project.modules[name])
 	    endif
 	endfor
     endfor
 
-    let l:module_list = [ ]
+    processed_modules = [ ]
 
-    for l:module in [ a:module ] + a:000
-	if g:ProjectConfig_Modules[g:ProjectConfig_Project].modules->has_key(l:module)
-	    let l:mod = g:ProjectConfig_Modules[g:ProjectConfig_Project].modules[l:module]
-	    call s:SetupLocalVimTagsAndPath(s:generators, l:module_list, l:mod)
+    for name in [ module_name ]->extend(module_names)
+	if project.modules->has_key(name)
+	    LocalUpdate_InDepth_ButtomUp_ReTraverse(Generators, processed_modules, project.modules[module_name])
 	endif
     endfor
-endfunction
+enddef
 
-if has('win16') || has('win32') || has('win64')
-    let g:ProjectConfig_DevNull = 'NUL'
-else
-    let g:ProjectConfig_DevNull = '/dev/null'
-endif
+g:ProjectConfig_EnableVimTags = EnableProjectModules
 
+# defcompile

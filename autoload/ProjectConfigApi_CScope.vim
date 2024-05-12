@@ -4,8 +4,8 @@ let g:ProjectConfig_CScope = { }
 let g:ProjectConfig_CScopeBuildOptions = [ '-q' ]   " '-b' is always used (hard-coded)
 let g:ProjectConfig_CScopeLookupOptions = [ ]
 
-let s:Join_Path = funcref('g:ProjectConfig_JoinPath')
-let s:Shell_Escape = funcref('g:ProjectConfig_ShellEscape')
+let s:Join_Path = funcref(g:ProjectConfig_JoinPath)
+let s:Shell_Escape = funcref(g:ProjectConfig_ShellEscape)
 
 " List of default source file extensions, from cscope source code at:
 "   https://sourceforge.net/p/cscope/cscope/ci/master/tree/src/dir.c#l519
@@ -78,7 +78,7 @@ endfunction
 " Populate s:ProjectConfig_CScope_Path and s:ProjectConfig_CScope_Options
 let s:Expand_CScope_Command = funcref('s:Expand_CScope_Command_Line')
 
-let s:List_Append_Unique = funcref('g:ProjectConfig_ListAppendUnique')
+let s:List_Append_Unique = funcref(g:ProjectConfig_ListAppendUnique)
 
 function s:CScope_Source_Filter(module)
     if has_key(module.cscope, 'glob')
@@ -119,10 +119,10 @@ function s:Expand_CScope_Sources(module)
 
 	if isdirectory(l:source_glob)
 	    if a:module.recurse
-		let l:source_glob .= '/**'
+		let l:source_glob ..= '/**'
 		let l:run_filter = v:false
 	    else
-		let l:source_glob .= '/*'
+		let l:source_glob ..= '/*'
 	    endif
 	endif
 
