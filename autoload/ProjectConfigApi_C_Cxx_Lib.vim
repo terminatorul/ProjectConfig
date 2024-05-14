@@ -2,7 +2,7 @@
 function g:ProjectConfig_CollectModuleIncludes(project, module, ...)
     let l:tree_depth = 0
 
-    for l:module_node in [ a:module] + a:000
+    for l:module_node in [ a:module ]->extend(a:000)
 	let l:subtree_depth = s:ModuleTreeDepth(a:project, l:module_node)
 
 	if l:subtree_depth > l:tree_depth

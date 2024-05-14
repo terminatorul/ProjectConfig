@@ -1,195 +1,240 @@
-let g:ProjectConfig_CTagsCxxOptions =
-    \[
-    \  '--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
-    \   '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
-    \]
+vim9script
 
-if has('win32') || has('win64')
-    eval g:ProjectConfig_CTagsCxxOptions->extend([ '-D_M_AMD64', '-D_WINDOWS', '-D_MBCS', '-D_WIN64', '-D_WIN32', '-D_MSC_VER=1933', '-D_MSC_FULL_VER=193331630'])
+import './ProjectConfigApi.vim' as ProjectConfig
+
+type Module  = ProjectConfig.Module
+type Project = ProjectConfig.Project
+
+export var CxxOptions =
+    [
+	'--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
+	'--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
+    ]
+
+if ProjectConfig.HasWindows
+    CxxOptions->extend(
+	[
+	    '-D_M_AMD64', '-D_WINDOWS', '-D_MBCS', '-D_WIN64', '-D_WIN32', '-D_MSC_VER=1933', '-D_MSC_FULL_VER=193331630'
+	])
 endif
 
-let s:Join_Path = funcref(g:ProjectConfig_JoinPath)
-let s:Shell_Escape = funcref(g:ProjectConfig_ShellEscape)
+g:ProjectConfig_CTagsCxxOptions = CxxOptions
 
-if !exists('g:ProjectConfig_Tags_Directory')
-    let g:ProjectConfig_Tags_Directory = '.tags'
+var Join_Path = ProjectConfig.JoinPath
+var Shell_Escape = ProjectConfig.ShellEscape
+var List_Append_Unique = ProjectConfig.ListAppendUnique
+
+export var CTags_Path: string
+export var CTags_Options: list<string>
+export var CTags_Directory: string = '.projectConfig'
+
+if g:->has_key('ProjectConfig_Tags_Directory')
+    CTags_Directory = g:ProjectConfig_Tags_Directory
 endif
 
-function s:Expand_CTags_Command_Line()
-    if exists('g:ProjectConfig_CTags_Executable')
+var Expand_CTags_Command: func(): void
+
+def Expand_CTags_Command_Line(): void
+    if g:->has_key('ProjectConfig_CTags_Executable')
 	if type(g:ProjectConfig_CTags_Executable) == v:t_list
-	    let s:ProjectConfig_CTags_Path = exepath(g:ProjectConfig_CTags_Executable[0])
-	    let s:ProjectConfig_CTags_Options = g:ProjectConfig_CTags_Executable[1:]
+	    CTags_Path = exepath(g:ProjectConfig_CTags_Executable[0])
+	    CTags_Options = g:ProjectConfig_CTags_Executable[1 : ]
 	else
-	    let s:ProjectConfig_CTags_Path = exepath(g:ProjectConfig_CTags_Executable)
-	    let s:ProjectConfig_CTags_Options = [ ]
+	    CTags_Path = exepath(g:ProjectConfig_CTags_Executable)
+	    CTags_Options = [ ]
 	endif
     else
-	let s:ProjectConfig_CTags_Path = exepath('ctags')
-	let s:ProjectConfig_CTags_Options = [ ]
+	CTags_Path = exepath('ctags')
+	CTags_Options = [ ]
     endif
 
-    if exists('g:ProjectConfig_CTags_Options')
-	eval s:ProjectConfig_CTags_Options->extend(g:ProjectConfig_CTags_Options)
+    if g:->has_key('ProjectConfig_CTags_Options')
+	CTags_Options->extend(g:ProjectConfig_CTags_Options)
     endif
 
-    let s:ProjectConfig_CTags_Path = s:Shell_Escape(s:ProjectConfig_CTags_Path)
-    call map(s:ProjectConfig_CTags_Options, { key, val -> s:Shell_Escape(val) })
+    CTags_Path = Shell_Escape(CTags_Path)
+    CTags_Options->map((_, option_string) => Shell_Escape(option_string))
 
-    let s:Expand_CTags_Command = { -> 0 }
-endfunction
+    Expand_CTags_Command = (): void => {
+    }
+enddef
 
-" Populate s:ProjectConfig_CTags_Path and s:ProjectConfig_CTags_Options
-let s:Expand_CTags_Command = funcref('s:Expand_CTags_Command_Line')
+# Populate CTags_Path and CTags_Options
+Expand_CTags_Command = Expand_CTags_Command_Line
 
-let s:List_Append_Unique = funcref(g:ProjectConfig_ListAppendUnique)
+def Build_Module_Tags(project: Project, module: Module): void
+    var ctags_command_list = [ CTags_Path ] + CTags_Options
+	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(module['private'].tags) ]
+	 + List_Append_Unique(module['private'].src, module['public'].src, module['private'].inc, module['public'].inc)
+		->mapnew((_, optarg) => Shell_Escape(optarg))
 
-function s:Build_Module_Tags(project, module)
-    let l:project = g:ProjectConfig_Modules[a:project]
-    let l:mod = l:project.modules[a:module]
-    let l:ctags_command_list = [ s:ProjectConfig_CTags_Path ] + s:ProjectConfig_CTags_Options
-	\ + l:project.config.ctags_args + l:mod.private.ctags_args + l:mod['public'].ctags_args + [ '-f', s:Shell_Escape(l:mod.private.tags) ]
-	\ + s:List_Append_Unique(l:mod.private.src, l:mod['public'].src, l:mod.private.inc, l:mod['public'].inc)
-	\	->mapnew({ _, val -> s:Shell_Escape(val) })
-
-    let l:tags_dir = fnamemodify(l:mod.private.tags, ':h')
-    call mkdir(l:tags_dir, 'p')
-    execute '!' . join(l:ctags_command_list, ' ')
+    var tags_dir = fnamemodify(module['private'].tags, ':h')
+    call mkdir(tags_dir, 'p')
+    execute '!' .. ctags_command_list->join(' ')
 
     if v:shell_error
-	echoerr 'Error generating tags for module ' . l:mod.name . ': shell command exited with code ' . v:shell_error
+	echoerr 'Error generating tags for module ' .. module.name .. ': shell command exited with code ' .. v:shell_error
     endif
-endfunction
+enddef
 
-function s:Build_Module_Tree_Tags(module_list, project, mod, add_external)
-    if a:mod.external && !a:add_external && filereadable(a:mod.private.tags)	" external libraries do not normally need to rebuild tags, after the first build
+def Build_Module_Tree_Tags(module_list: list<string>, project: Project, module: Module, external: bool): void
+    if module.external && !external && filereadable(module['private'].tags)	# external libraries do not normally need to rebuild tags, after the first build
 	return
     endif
 
-    if index(a:module_list, a:mod.name) < 0
-	for l:dep_module in a:mod.private.deps + a:mod['public'].deps
-	    if has_key(g:ProjectConfig_Modules[a:project].modules, l:dep_module)
-		call s:Build_Module_Tree_Tags(a:module_list, a:project, g:ProjectConfig_Modules[a:project].modules[l:dep_module], a:add_external)
+    if module_list->index(module.name) < 0
+	for dep_module_name in module['private'].deps + module['public'].deps
+	    if project.modules->has_key(dep_module_name)
+		Build_Module_Tree_Tags(module_list, project, project.modules[dep_module_name], external)
 	    endif
 	endfor
 
-	call s:Build_Module_Tags(a:project, a:mod.name)
-	call add(a:module_list, a:mod.name)
+	module_list->add(module.name)
+	Build_Module_Tags(project, module)
     endif
-endfunction
+enddef
 
-function s:ProjectConfig_BuildTagsTree(add_external, project, module, modules)
-    if has_key(g:ProjectConfig_Modules, a:project)
-	call s:Expand_CTags_Command()
+def BuildTagsTree(external: bool, project_name: string, module_name: string, ...module_names: list<string>): void
+    if ProjectConfig.Projects->has_key(project_name)
+	var project = ProjectConfig.Projects[project_name]
 
-	let l:module_list = [ ]
+	Expand_CTags_Command()
 
-	for l:module_name in [ a:module ] + a:modules
-	    if has_key(g:ProjectConfig_Modules[a:project].modules, l:module_name)
-		let l:mod = g:ProjectConfig_Modules[a:project].modules[l:module_name]
-		call s:Build_Module_Tree_Tags(l:module_list, a:project, l:mod, a:add_external)
+	var module_list: list<string> = [ ]
+
+	for name in [ module_name ]->extend(module_names)
+	    if project.modules->has_key(name)
+		var module = project.modules[name]
+		Build_Module_Tree_Tags(module_list, project, module, external)
 	    endif
 	endfor
     endif
-endfunction
+enddef
 
-function g:ProjectConfig_BuildTags(project, module, ...)
-    call s:ProjectConfig_BuildTagsTree(v:false, a:project, a:module, a:000)
-endfunction
+export def BuildTags(project_name: string, module_name: string, ...module_names: list<string>): void
+    BuildTagsTree->call([ false, project_name, module_name ]->extend(module_names))
+enddef
 
-function g:ProjectConfig_BuildAllTags(project, module, ...)
-    call s:ProjectConfig_BuildTagsTree(v:true, a:project, a:module, a:000)
-endfunction
+g:ProjectConfig_BuildTags = BuildTags
 
-function g:ProjectConfig_EnableReTagCommand(module, ...)
-    execute "command ReTag" . g:ProjectConfig_Project . " call g:ProjectConfig_BuildTags('" . join([ g:ProjectConfig_Project, a:module ] + a:000, "', '") . "')"
-    execute "command ReTag" . g:ProjectConfig_Project . "All call g:ProjectConfig_BuildAllTags('" . join([ g:ProjectConfig_Project, a:module ] + a:000, "', '") . "')"
-endfunction
+export def BuildAllTags(project_name: string, module_name: string, module_names: list<string>): void
+    BuildTagsTree->call([ true, project_name, module_name ]->extend(module_names))
+enddef
 
-" Notify current project is added to g:ProjectConfig_Modules
-function s:AddCurrentProject(project_name)
-    if !has_key(g:ProjectConfig_Modules[a:project_name].config, 'ctags_args')
-	let g:ProjectConfig_Modules[a:project_name].config['ctags_args'] = [ ]
-    endif
-endfunction
+g:ProjectConfig_BuildAllTags = BuildAllTags
 
-" Notify project config entry is updated
-function s:SetConfigEntry(name)
-    if a:name == 'ctags_args'
-	if type(g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name]) != v:t_list
-	    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name] = [ g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name] ]
+export def EnableReTagCommand(module_name: string, ...module_names: list<string>): void
+    var arglist = "'" .. [ g:ProjectConfig_Project, module_name ]->extend(module_names)->join("', '") .. "'"
+    execute "command ReTag" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildTags(" .. arglist .. ")"
+    execute "command ReTag" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildAllTags(" .. arglist .. ")"
+enddef
+
+g:ProjectConfig_EnableReTagCommand = EnableReTagCommand
+
+class CTagsGenerator implements ProjectConfig.Generator
+    var name: string =  'ctags'
+    var global_tags: string
+    var local_tags_list: list<string> = [ ]
+    var external_tags_list: list<string> = [ ]
+
+    def AddProject(project: Project, project_name: string): void
+	if !project.config->has_key('ctags_args')
+	    project.config['ctags_args'] = [ ]
 	endif
+    enddef
 
-	call map(g:ProjectConfig_Modules[g:ProjectConfig_Project].config[a:name], { _, val -> s:Shell_Escape(val) })
-    endif
-endfunction
+    def SetConfigEntry(project: Project, name: string): void
+	if name == 'ctags_args'
+	    if type(project.config[name]) != v:t_list
+		project.config[name] = [ project.config[name] ]
+	    endif
 
-" Notify new project module is initialized
-function s:AddModule(module, ...)
-    for l:module in [ a:module ]->extend(a:000)
-	for l:scope in [ 'private', 'public', 'interface' ]
-	    let l:mod = l:module[l:scope]
+	    project.config[name]->map((_, val) => Shell_Escape(val))
+	endif
+    enddef
 
-	    if has_key(l:mod, 'ctags_args')
-		if type(l:mod.ctags_args) != v:t_list
-		    let l:mod.ctags_args = [ l:mod.ctags_args ]
+    def AddModule(project: Project, module: Module, ...modules: list<Module>): void
+	for this_module in [ module ]->extend(modules)
+	    for scope_name in [ 'private', 'public', 'interface' ]
+		var scope = this_module[scope_name]
+
+		if scope->has_key('ctags_args')
+		    if type(scope.ctags_args) != v:t_list
+			scope.ctags_args = [ scope.ctags_args ]
+		    endif
+
+		    scope.ctags_args->map((_, optarg) => Shell_Escape(optarg))
+		else
+		    scope.ctags_args = [ ]
 		endif
+	    endfor
 
-		call map(l:mod.ctags_args, { _, val -> s:Shell_Escape(val) })
-	    else
-		let l:mod.ctags_args = [ ]
+	    if !this_module['private']->has_key('tags')
+		this_module['private']['tags'] = Join_Path(g:ProjectConfig_Directory, CTags_Directory, this_module.name .. '.tags')
 	    endif
 	endfor
+    enddef
 
-	if !has_key(l:module.private, 'tags')
-	    let l:module.private['tags'] = s:Join_Path(g:ProjectConfig_Directory, g:ProjectConfig_Tags_Directory, l:module.name . '.tags')
+    # Notifies the generator is enabled for a new project, and module
+    # tree traversal shall start after
+    def LocalConfigInit(): void
+	var project = ProjectConfig.AddCurrentProject()
+	project.config['orig_tags'] = &g:tags
+
+	this.global_tags = &g:tags
+    enddef
+
+    # Called with external modules first, and local modules after,
+    # Follows In-Depth, ButtomUp module tree traversal
+    def UpdateGlobalConfig(module: Module): void
+	execute 'set tags^=' .. module['private']['tags']->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
+    enddef
+
+    # Called for each module following In-Depth ButtomUp traversal
+    # Notifies nested traversal (By-Depth, TopDown), for a module subtree has started
+    def LocalConfigInitModule(module: Module): void
+	this.local_tags_list = [ ]
+	this.external_tags_list = [ ]
+    enddef
+
+    # Notify nested traversal in progress:
+    #	- InDepth, ButtomUp enclosing traversal
+    #	- ByDepth, TopDown nested traversal
+    def UpdateModuleLocalConfig(module: Module): void
+	if module.external
+	    this.external_tags_list->add(module['private']['tags'])
+	else
+	    this.local_tags_list->add(module['private']['tags'])
 	endif
-    endfor
-endfunction
+    enddef
 
-let g:ProjectConfig_CTags = { 'name': 'ctags' }
-let g:ProjectConfig_CTags.AddProject = funcref('s:AddCurrentProject')
-let g:ProjectConfig_CTags.SetConfigEntry = funcref('s:SetConfigEntry')
-let g:ProjectConfig_CTags.AddModule = funcref('s:AddModule')
+    # Called for each module following In-Depth ButtomUp traversal
+    # Notifies nested traversal (By-Depth, TopDown), for a module subtree has
+    # completed
+    def LocalConfigCompleteModule(module: Module): void
+	var tags_list: list<string> = this.local_tags_list + this.external_tags_list
+	var tags_path: string = tags_list
+		->mapnew((_, val) => val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g'))
+		->join(',')
 
-function g:ProjectConfig_CTags.LocalConfigInit()
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_tags'] = &g:tags
-    let l:self.global_tags = &g:tags
-    let l:self.tags_list = { }
-endfunction
+# def ExpandTagBarPaths()
+#     let g:tagbar_ctags_bin = exepath('ctags')   " Cache the location of ctags.exe on $PATH
+#
+#     if !len(g:tagbar_ctags_bin)
+# 	unlet g:tagbar_ctags_bin
+#     endif
+# enddef
 
-" Will be called with external modules first, and local modules after,
-" each time following top-down in-depth traversal of the module tree
-function g:ProjectConfig_CTags.UpdateGlobalConfig(mod)
-    execute 'set tags ^=' . a:mod.private.tags->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
-endfunction
+	var vim_cmd_set_tags: string  = 'setlocal tags^=' .. tags_path
 
-" Notify traversal by depth level, top to bottom, for a module subtree has started
-function g:ProjectConfig_CTags.LocalConfigInitModule(mod)
-    let self.local_tags_list = [ ]
-    let self.external_tags_list = [ ]
-endfunction
+	if !!len(this.global_tags)
+	    vim_cmd_set_tags ..= ',' .. this.global_tags
+	endif
 
-" Notify next node during traversal by depth level, top to bottom, of a subtree
-function g:ProjectConfig_CTags.UpdateModuleLocalConfig(mod)
-    if a:mod.external
-	eval l:self.external_tags_list->add(a:mod.private.tags)
-    else
-	eval l:self.local_tags_list->add(a:mod.private.tags)
-    endif
-endfunction
+	ProjectConfig.AddModuleAutoCmd(module, vim_cmd_set_tags)
+    enddef
+endclass
 
-" Notify traversal by depth level, top to buttom, for a module subtree is
-" complete
-function g:ProjectConfig_CTags.LocalConfigCompleteModule(mod)
-    let l:tags_list = l:self.local_tags_list + l:self.external_tags_list
-    let l:cmd = 'setlocal tags^=' . l:tags_list->map({ _, val -> val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g') })->join(',')
+ProjectConfig.Generators->add(CTagsGenerator.new())
 
-    if len(self.global_tags)
-	let l:cmd ..= ',' . l:self.global_tags
-    endif
-
-    call g:ProjectConfig_AddModuleAutocmd(a:mod, l:cmd)
-endfunction
-
-eval g:ProjectConfig_Generators->add(g:ProjectConfig_CTags)
+# defcompile

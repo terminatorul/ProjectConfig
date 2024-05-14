@@ -1,6 +1,6 @@
 vim9script
 
-# import autoload './ProjectConfigApi_DependencyWalker.vim' as DependencyWalker
+import autoload './ProjectConfigApi_DependencyWalker.vim' as DependencyWalker
 
 export const HasWindows: bool = has('win16') || has('win32') || has('win64')
 export const DirectorySeparator: string = exists('+shellslash') ? '\' : '/'
@@ -19,6 +19,7 @@ g:ProjectConfig_JoinPath = JoinPath
 
 g:ProjectConfig_Generators = [ ]
 
+export type Property = any
 export type Module = dict<any>
 export type Project = dict<any>
 
@@ -30,7 +31,7 @@ export interface Generator
     def LocalConfigInit(): void
     def UpdateGlobalConfig(module: Module): void
     def LocalConfigInitModule(module: Module): void
-    def UpdateLocalModuleConfig(module: Module): void
+    def UpdateModuleLocalConfig(module: Module): void
     def LocalConfigCompleteModule(module: Module): void
 endinterface
 
@@ -38,35 +39,35 @@ class DispatchGenerator implements Generator
     var generators: list<dict<any>>
 
     def AddProject(project: Project, name: string): void
-	this.generators->foreach((_, gen) => gen.AddProject(name))
+	this.generators->foreach((_, gen): void => gen.AddProject(name))
     enddef
 
     def SetConfigEntry(project: Project, name: string): void
-	this.generators->foreach((_, gen) => gen.SetConfigEntry(name))
+	this.generators->foreach((_, gen): void => gen.SetConfigEntry(name))
     enddef
 
     def AddModule(project: Project, module: Module, ...modules: list<Module>): void
-	this.generators->foreach((_, gen) => gen.AddModule->call([ module ]->extend(modules)))
+	this.generators->foreach((_, gen): void => gen.AddModule->call([ module ]->extend(modules)))
     enddef
 
     def LocalConfigInit(): void
-	this.generators->foreach((_, gen) => gen.LocalConfigInit())
+	this.generators->foreach((_, gen): void => gen.LocalConfigInit())
     enddef
 
     def UpdateGlobalConfig(module: Module): void
-	this.generators->foreach((_, gen) => gen.UpdateGlobalConfig(module))
+	this.generators->foreach((_, gen): void => gen.UpdateGlobalConfig(module))
     enddef
 
     def LocalConfigInitModule(module: Module): void
-	this.generators->foreach((_, gen) => gen.LocalConfigInitModule(module))
+	this.generators->foreach((_, gen): void => gen.LocalConfigInitModule(module))
     enddef
 
-    def UpdateLocalModuleConfig(module: Module): void
-	this.generators->foreach((_, gen) => gen.UpdateLocalModuleConfig(module))
+    def UpdateModuleLocalConfig(module: Module): void
+	this.generators->foreach((_, gen): void => gen.UpdateModuleLocalConfig(module))
     enddef
 
     def LocalConfigCompleteModule(module: Module): void
-	this.generators->foreach((_, gen) => gen.LocalConfigCompleteModule(module))
+	this.generators->foreach((_, gen): void => gen.LocalConfigCompleteModule(module))
     enddef
 endclass
 
@@ -155,31 +156,38 @@ enddef
 
 g:ProjectConfig_ListPrependUnique = ListPrependUnique
 
-export def ExpandModuleSources(module: Module): list<string>
+export def ExpandModuleSources(module: Module, filters: list<string> = [ ]): list<string>
     var source_list: list<string> = [ ]
 
-    for source_glob in module.src
-	var run_filter: bool = true
-	var glob_pattern: string
+    for source_glob in module['private'].src + module['public'].src
+	var descend_glob: string
+	var run_filter: bool
+	var file_list
 
 	if isdirectory(source_glob)
 	    if module.recurse
-		glob_pattern = source_glob .. '/**'
+		descend_glob = source_glob .. '/**'
 		run_filter = false
 	    else
-		glob_pattern = source_glob .. '/*'
+		descend_glob = source_glob .. '/*'
+		run_filter = true
 	    endif
 	else
-	    glob_pattern = source_glob
+	    descend_glob = source_glob
+	    run_filter = true
 	endif
 
-	var glob_list: list<string> = glob_pattern->glob(true, true)
+	var file_list: list<string> = descend_glob->glob(true, true)
+
+	if filters
+	    Apply_Filters(file_list, filters)
+	else
 
 	if run_filter
-	    glob_list->filter((_, val) => !isdirectory(val))
+	    file_list->filter((_, val) => !isdirectory(val))
 	endif
 
-	InPlaceAppendUnique(source_list, glob_list)
+	InPlace_Append_Unique(source_list, file_list)
     endfor
 
     return source_list
@@ -190,10 +198,6 @@ g:ProjectConfig_ExpandModuleSources = ExpandModuleSources
 export var Projects: dict<Project> = { }
 
 g:ProjectConfig_Modules = Projects
-
-if !exists('g:ProjectConfig_CleanPathOption')
-    g:ProjectConfig_CleanPathOption = true
-endif
 
 export def AddCurrentProject(): Project
     if Projects->has_key(g:ProjectConfig_Project)
@@ -214,7 +218,7 @@ enddef
 g:ProjectConfig_AddCurrentProject = AddCurrentProject
 
 # Construct and return a new empty project module with given name
-def g:ProjectConfig_Module(name: string, external: bool = false): Module
+export def CreateModule(name: string, external: bool = false): Module
     var module: Module = { 'name': name, 'external': external }
 
     for scope in [ 'private', 'public', 'interface' ]
@@ -231,6 +235,8 @@ def g:ProjectConfig_Module(name: string, external: bool = false): Module
     return module
 enddef
 
+g:ProjectConfig_Module = CreateModule
+
 # Add all modules to global g:ProjectConfig_Modules
 # and fill in default fields for a module
 export def AddModule(module: Module, ...modules: list<Module>)
@@ -244,6 +250,14 @@ export def AddModule(module: Module, ...modules: list<Module>)
 
 	if !current_module->has_key('external')
 	    current_module.external = false
+	endif
+
+	if !current_module->has_key('recurse')
+	    if current_module->has_key('recursive')
+		current_module.recurse = current_module.recursive
+	    else
+		current_module.recurse = false
+	    endif
 	endif
 
 	for scope_name in [ 'private', 'public', 'interface' ]
@@ -287,20 +301,20 @@ export def AddModule(module: Module, ...modules: list<Module>)
 	endfor
     endfor
 
-    for generator in Generators
-	generator.AddModule->call(module_list)
-    endfor
-
     var project: Project = AddCurrentProject()
 
     for current_module in module_list
 	project.modules[current_module.name] = current_module
     endfor
+
+    for generator in Generators
+	generator.AddModule->call([ project ]->extend(module_list))
+    endfor
 enddef
 
 g:ProjectConfig_AddModule = AddModule
 
-export def AddModuleAutoCmd(module: Module, commands: any, pattern: list<string>)
+export def AddModuleAutoCmd(module: Module, commands: any, pattern: list<string> = [ ])
     var auto_cmd: dict<any> = { }
 
     auto_cmd.group   = g:ProjectConfig_Project
@@ -373,7 +387,7 @@ export def ShellEscape(param: string): string
     endif
 
     # Special case for Windows, when command line argument ends with '\' and
-    # also needs to be quoted, because the resulting '\"' at the end actually
+    # also needs to be quoted. Because the resulting '\"' at the end, actually
     # escapes the double-quote character
 
     if HasWindows
@@ -430,14 +444,14 @@ def GlobalUpdate_InDepth_ButtomUp_Traverse_Module(
 	endfor
 
 	if !!module.external == !!external_modules
-	    generators->foreach(( _, gen) => gen.UpdateGlobalConfig(module))
+	    generators->foreach(( _, gen: Generator): void => gen.UpdateGlobalConfig(module))
 	endif
     endif
 enddef
 
 def LocalUpdate_Traverse_Module_SubLevel(
 	    generators:		 list<Generator>,
-	    processed_modules:	 list<Module>,
+	    processed_modules:	 list<string>,
 	    current_depth_level: number,
 	    target_depth_level:	 number,
 	    external_modules:	 bool,
@@ -446,7 +460,7 @@ def LocalUpdate_Traverse_Module_SubLevel(
     if current_depth_level == target_depth_level
 	if !!module.external == !!external_modules && processed_modules->index(module.name) < 0
 	    processed_modules->add(module.name)
-	    generators->foreach((_, gen) => gen.UpdateModuleLocalConfig(module))
+	    generators->foreach((_, gen: Generator): void => gen.UpdateModuleLocalConfig(module))
 	endif
 
 	return true
@@ -475,7 +489,7 @@ enddef
 
 def LocalUpdate_Level_TopDown_Traverse_Module(generators: list<Generator>, external_modules: bool, module: Module): void
     var depth_level: number = 1
-    var processed_modules: list<Module> = [ ]
+    var processed_modules: list<string> = [ ]
 
     while LocalUpdate_Traverse_Module_SubLevel(generators, processed_modules, 1, depth_level, external_modules, module)
 	++depth_level
@@ -494,15 +508,15 @@ def LocalUpdate_InDepth_ButtomUp_ReTraverse(generators: list<Generator>, process
 	    endif
 	endfor
 
-	generators->foreach((_, gen) => gen.LocalConfigInitModule(module))
+	generators->foreach((_, gen: Generator): void => gen.LocalConfigInitModule(module))
 	LocalUpdate_Level_TopDown_Traverse_Module(generators, true, module)
 	LocalUpdate_Level_TopDown_Traverse_Module(generators, false, module)
-	generators->foreach((_, gen) => gen.LocalConfigCompleteModule(module))
+	generators->foreach((_, gen: Generator): void => gen.LocalConfigCompleteModule(module))
     endif
 enddef
 
-def EnableProjectModules(module_name: string, ...module_names: list<string>): void
-    Generators->foreach((_, gen) => gen.LocalConfigInit())
+export def EnableProjectModules(module_name: string, ...module_names: list<string>): void
+    Generators->foreach((_, gen: Generator): void => gen.LocalConfigInit())
 
     var project = AddCurrentProject()
     var processed_modules: list<string> = [ ]

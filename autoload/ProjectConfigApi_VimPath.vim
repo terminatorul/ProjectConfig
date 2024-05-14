@@ -1,71 +1,99 @@
+vim9script
 
-let g:ProjectConfig_VimPath = { 'name': 'include' }
+import './ProjectConfigApi.vim' as ProjectConfig
 
-let g:ProjectConfig_VimPath.AddModule = { mod, ... -> 0 }
+type Property = ProjectConfig.Property
+type Module = ProjectConfig.Module
+type Project = ProjectConfig.Project
 
-function g:ProjectConfig_VimPath.LocalConfigInit()
-    if exists('g:ProjectConfig_CleanPathOption') && g:ProjectConfig_CleanPathOption
-	set path-=
-    endif
+if !exists('g:ProjectConfig_CleanPathOption')
+    g:ProjectConfig_CleanPathOption = true
+endif
 
-    let g:ProjectConfig_Modules[g:ProjectConfig_Project].config['orig_path'] = &g:path
-    let self.global_path = &g:path
-endfunction
+class VimPathGenerator implements ProjectConfig.Generator
+    var name: string = 'include'
+    var global_path: string
+    var local_inc_list: list<string>
+    var external_inc_list: list<string>
 
-" Will be called with external modules first, and local modules after,
-" each time following in-depth (recursive) traversal of the module tree
-function g:ProjectConfig_VimPath.UpdateGlobalConfig(mod)
-    set path-=.
+    def AddProject(project: Project, project_name: string): void
+    enddef
 
-    for l:inc_dir in a:mod.private.inc + a:mod['public'].inc
-	execute 'set path-=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
-	execute 'set path^=' . l:inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
-    endfor
+    def SetConfigEntry(project: Project, name: string): void
+    enddef
 
-    set path^=.
-endfunction
+    def AddModule(project: Project, module: Module, ...modules: list<Module>)
+    enddef
 
-" Notify traversal by depth level, top to bottom, for a module subtree has started
-function g:ProjectConfig_VimPath.LocalConfigInitModule(mod)
-    let self.local_inc_list = [ ]
-    let self.external_inc_list = [ ]
-endfunction
+    # Notifies the generator is enabled for a new project, and module
+    # traversal shall start after
+    def LocalConfigInit(): void
+	if !!g:ProjectConfig_CleanPathOption
+	    set path-=
+	endif
 
-" Notify next node during traversal by depth level, top to bottom, of a subtree
-function g:ProjectConfig_VimPath.UpdateModuleLocalConfig(mod)
-    if a:mod.external
-	eval self.external_inc_list->extend(a:mod.private.inc + a:mod.public.inc)
-    else
-	eval self.local_inc_list->extend(a:mod.private.inc + a:mod.public.inc)
-    endif
-endfunction
+	var project = ProjectConfig.AddCurrentProject()
+	project.config['orig_path'] = &g:path
 
-" Notify traversal by depth level, top to buttom, for a module subtree is
-" complete
-function g:ProjectConfig_VimPath.LocalConfigCompleteModule(mod)
-    let l:inc_list = self.local_inc_list + self.external_inc_list
-    let l:cmd = 'setlocal path^=' . l:inc_list->map({ _, val -> val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g') })->join(',')
+	this.global_path = &g:path
+    enddef
 
-    if len(self.global_path)
-	let l:cmd .= ',' . self.global_path
-    endif
+    # Called with external modules first, and local modules after,
+    # following In-Depth, ButtomUp module tree traversal
+    def UpdateGlobalConfig(module: Module): void
+	set path-=.
 
-    let l:cmd .= ' | setlocal path-=.'
-    let l:cmd .= ' | setlocal path-=.'
-    let l:cmd .= ' | setlocal path-=.'
-    let l:cmd .= ' | setlocal path^=.'
+	for inc_dir in module['private'].inc + module['public'].inc
+	    execute 'set path-=' .. inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
+	    execute 'set path^=' .. inc_dir->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g')
+	endfor
 
-    if g:ProjectConfig_CleanPathOption
-	let l:cmd .= ' | setlocal path-='
-	let l:cmd .= ' | setlocal path-='
-	let l:cmd .= ' | setlocal path-='
-    endif
+	set path^=.
+    enddef
 
-    call g:ProjectConfig_AddModuleAutocmd(a:mod, l:cmd)
-endfunction
+    # Notify nested traversal of the module subtree has started
+    def LocalConfigInitModule(module: Module): void
+	this.local_inc_list = [ ]
+	this.external_inc_list = [ ]
+    enddef
 
-function g:ProjectConfig_VimPath.AddProject(project_name)
-endfunction
+    # Notify nested traversal in progress:
+    #	- InDepth, ButtomUp enclosing traversal
+    #	- ByDepth, TopDown nested traversal
+    def UpdateModuleLocalConfig(module: Module): void
+	if module.external
+	    this.external_inc_list->extend(module['private'].inc + module['public'].inc)
+	else
+	    this.local_inc_list->extend(module['private'].inc + module['public'].inc)
+	endif
+    enddef
 
-eval g:ProjectConfig_Generators->add(g:ProjectConfig_VimPath)
+    # Notify traversal by depth level, top to buttom, for a module subtree is
+    # complete
+    def LocalConfigCompleteModule(module: Module)
+	var inc_list: list<Property> = this.local_inc_list + this.external_inc_list
+	var inc_path: string = inc_list->mapnew((_, inc_dir) => inc_dir->fnameescape()->substitute('[ \\]', '\\\1', 'g')->substitute('\V,', '\\\\,', 'g'))->join(',')
+	var cmd: string = 'setlocal path^=' .. inc_path
 
+	if !!len(this.global_path)
+	    cmd ..= ',' .. this.global_path
+	endif
+
+	cmd ..= ' | setlocal path-=.'
+	cmd ..= ' | setlocal path-=.'
+	cmd ..= ' | setlocal path-=.'
+	cmd ..= ' | setlocal path^=.'
+
+	if !!g:ProjectConfig_CleanPathOption
+	    cmd ..= ' | setlocal path-='
+	    cmd ..= ' | setlocal path-='
+	    cmd ..= ' | setlocal path-='
+	endif
+
+	ProjectConfig.AddModuleAutoCmd(module, cmd)
+    enddef
+endclass
+
+ProjectConfig.Generators->add(VimPathGenerator.new())
+
+# defcompile
