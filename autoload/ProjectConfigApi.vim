@@ -1,6 +1,6 @@
 vim9script
 
-import autoload './ProjectConfigApi_DependencyWalker.vim' as DependencyWalker
+import './ProjectConfigApi_DependencyWalker.vim' as ProjectModel
 
 export const HasWindows: bool = has('win16') || has('win32') || has('win64')
 export const DirectorySeparator: string = exists('+shellslash') ? '\' : '/'
@@ -19,9 +19,11 @@ g:ProjectConfig_JoinPath = JoinPath
 
 g:ProjectConfig_Generators = [ ]
 
-export type Property = any
-export type Module = dict<any>
-export type Project = dict<any>
+export type Property = ProjectModel.Property
+export type Module   = ProjectModel.Module
+export type Project  = ProjectModel.Project
+
+# export const null_Module: Module = v:null_dict
 
 export interface Generator
     def AddProject(project: Project, project_name: string): void
@@ -106,55 +108,10 @@ enddef
 
 g:ProjectConfig_ListCompare =  ListCompare
 
-# duplicate values that appear sooner have priority and will be kept over
-# values that appear later
-export def InPlaceAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
-    for element in [ l2 ]->extend(extra)->flattennew(1)
-	if l1->index(element) < 0
-	    l1->add(element)
-	endif
-    endfor
-
-    return l1
-enddef
-
-g:ProjectConfig_InPlaceAppendUnique =  InPlaceAppendUnique
-
-# duplicate values that appear sooner have priority and will be kept over
-# values that appear later
-export def ListAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
-    return InPlaceAppendUnique->call([ copy(l1), l2 ]->extend(extra))
-enddef
-
-g:ProjectConfig_ListAppendUnique =  ListAppendUnique
-
-# duplicate values that appear sooner in the target list have priority over
-# values that appear later. The element order in l2 + ... is otherwise
-# preserved
-export def InPlacePrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
-    for element in [ l2 ]->extend(extra)->flattennew(1)->reverse()
-	var element_index: number = l1->index(element)
-
-	if element_index >= 0
-	    l1->remove(element_index)
-	endif
-
-	eval l1->insert(element)
-    endfor
-
-    return l1
-enddef
-
-g:ProjectConfig_InPlacePrependUnique = InPlacePrependUnique
-
-# duplicate values that appear sooner in the target list have priority over
-# values that appear later. The element order in l2 + ... is otherwise
-# preserved
-export def ListPrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
-    return InPlacePrependUnique->call([ copy(l1), l2 ]->extend(extra))
-enddef
-
-g:ProjectConfig_ListPrependUnique = ListPrependUnique
+export var InPlaceAppendUnique  = ProjectModel.InPlaceAppendUnique
+export var ListAppendUnique     = ProjectModel.ListAppendUnique
+export var InPlacePrependUnique = ProjectModel.InPlacePrependUnique
+export var ListPrependUnique    = ProjectModel.ListPrependUnique
 
 export def ExpandModuleSources(module: Module, filters: list<string> = [ ]): list<string>
     var source_list: list<string> = [ ]

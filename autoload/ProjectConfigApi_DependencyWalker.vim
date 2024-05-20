@@ -1,25 +1,66 @@
 vim9script
 
-var InPlace_Append_Unique: func = g:ProjectConfig_InPlaceAppendUnique
-var InPlace_Prepend_Unique: func = g:ProjectConfig_InPlacePrependUnique
-
-var DependencyWalker: dict<any> =
-	    \ {
-	    \	'target_level':   1,
-	    \   'module_list':    [ ],
-	    \   'parent_chain':   [ ]
-	    \ }
-
 type PropertyList = list<any>
 type NameList = list<string>
+export type Property = any
 export type Module = dict<any>
 export type Project = dict<any>
-export type CallbackFunction = func(number, bool, Module, NameList): void
-export type AccessorFunction = func(number, bool, Module, NameList): PropertyList
+export type CallbackFunction = func(bool, number, bool, Module, bool): void
+export type AccessorFunction = func(number, bool, Module, bool): PropertyList
 export type ReduceFunction   = func(number, PropertyList, PropertyList): void
 export type DescendFunction  = func(number, Module): NameList
 
-export enum TraversalMode
+# duplicate values that appear sooner have priority and will be kept over
+# values that appear later
+export def InPlaceAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    for element in [ l2 ]->extend(extra)->flattennew(1)
+	if l1->index(element) < 0
+	    l1->add(element)
+	endif
+    endfor
+
+    return l1
+enddef
+
+g:ProjectConfig_InPlaceAppendUnique =  InPlaceAppendUnique
+
+# duplicate values that appear sooner have priority and will be kept over
+# values that appear later
+export def ListAppendUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    return InPlaceAppendUnique->call([ copy(l1), l2 ]->extend(extra))
+enddef
+
+g:ProjectConfig_ListAppendUnique =  ListAppendUnique
+
+# duplicate values that appear sooner in the target list have priority over
+# values that appear later. The element order in l2 + ... is otherwise
+# preserved
+export def InPlacePrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    for element in [ l2 ]->extend(extra)->flattennew(1)->reverse()
+	var element_index: number = l1->index(element)
+
+	if element_index >= 0
+	    l1->remove(element_index)
+	endif
+
+	eval l1->insert(element)
+    endfor
+
+    return l1
+enddef
+
+g:ProjectConfig_InPlacePrependUnique = InPlacePrependUnique
+
+# duplicate values that appear sooner in the target list have priority over
+# values that appear later. The element order in l2 + ... is otherwise
+# preserved
+export def ListPrependUnique(l1: list<any>, l2: list<any>, ...extra: list<list<any>>): list<any>
+    return InPlacePrependUnique->call([ copy(l1), l2 ]->extend(extra))
+enddef
+
+g:ProjectConfig_ListPrependUnique = ListPrependUnique
+
+export enum TraverseMode
     ByLevel,
     InDepth
 endenum
@@ -29,97 +70,213 @@ export enum TraverseDirection
     ButtomUp
 endenum
 
-def DependencyWalker_New(self: dict<any>, project: Project, Callback_Fn: CallbackFunction, Descend_Fn: DescendFunction): dict<any>
-    return self->extendnew({
-		\  	'project':      project,
-	    	\ 	'callback_fn':  Callback_Fn,
-		\	'descend_fn':	Descend_Fn
-		\ })
-enddef
+export enum SiblingTraversal
+    LeftToRight,
+    RightToLeft
+endenum
 
-def DependencyWalker_Module_Tree_Depth(self: dict<any>, module: Module, current_level: number = 1): number
-    var deps_list: list<string> = self.descend_fn(current_level, module)
+export class DependencyWalker
+    var exported: bool
+    var target_level: number = 1
+    var module_list: list<string> = [ ]
+    var parent_chain: list<string> = [ ]
+    var project: Project
+    var Callback_Function: CallbackFunction
+    var Descend_Function: DescendFunction
+    var traverse_direction: TraverseDirection
+    var sibling_traversal: SiblingTraversal
 
-    if !!deps_list->len()
-	self.parent_chain->add(module.name)
+    def new(project: Project, Callback_Function: CallbackFunction, Descend_Function: DescendFunction)
+	this.project = project
+	this.Callback_Function = Callback_Function
+	this.Descend_Function = Descend_Function
+	this.parent_chain = [ ]
+    enddef
 
-	var subtree_depth: number =
-		    \ deps_list
-		    \   ->filter((_, name) => has_key(self.project.modules, name) && self.parent_chain->index(name) < 0)
-		    \   ->mapnew((_, name) => self.project.modules[name])
-		    \	->map((_, submodule) => DependencyWalker_Module_Tree_Depth(self, submodule, current_level + 1))
-		    \	->max()
-
-	self.parent_chain->remove(-1)
-
-	if !!subtree_depth
-	    return subtree_depth
+    def TargetLevel(level: number = -1): number
+	if level == -1
+	    return this.target_level
+	else
+	    var previous_level = this.target_level
+	    this.target_level = level
+	    return previous_level
 	endif
-    endif
+    enddef
 
-    return current_level
-enddef
+    def ModuleTreeDepth(module: Module, current_level: number = 1): number
+	var deps_list: list<string> = this.Descend_Function(current_level, module)
 
-def DependencyWalker_Traverse_Dependencies(self: dict<any>, modules: list<Module>, current_level: number = 1): void
-    if current_level == self.target_level
-	var index: number = 0
+	if !!deps_list->len()
+	    this.parent_chain->add(module.name)
 
-	for module in modules
-	    var old_index: number = self.module_list->index(module.name)
-	    var is_duplicate: bool
+	    var subtree_depth: number =
+			\ deps_list
+			\   ->filter((_, name) => has_key(this.project.modules, name) && this.parent_chain->index(name) < 0)
+			\   ->mapnew((_, name) => this.project.modules[name])
+			\	->map((_, submodule) => this.ModuleTreeDepth(submodule, current_level + 1))
+			\	->max()
 
-	    if old_index < 0
-		is_duplicate = v:false
+	    this.parent_chain->remove(-1)
+
+	    if !!subtree_depth
+		return subtree_depth
+	    endif
+	endif
+
+	return current_level
+    enddef
+
+    def StartTraversal(exported: bool, traverse_direction: TraverseDirection, sibling_traversal: SiblingTraversal)
+	this.exported = exported
+	this.traverse_direction = traverse_direction
+	this.sibling_traversal = sibling_traversal
+	this.target_level = 0
+
+	if !!this.module_list
+	    this.module_list->remove(0, -1)
+	endif
+    enddef
+
+    def CheckExchangeDuplicate(module: Module): bool
+	if this.module_list->index(module.name) < 0
+	    if this.sibling_traversal == SiblingTraversal.LeftToRight
+		this.module_list->append(module.name)
 	    else
-		is_duplicate = v:true
-		self.module_list->remove(old_index)
-
-		if old_index < index
-		    --index
-		endif
+		this.module_list->insert(module.name)
 	    endif
 
-	    self.module_list->insert(module.name, index)
-	    ++index
+	    return false
+	endif
 
-	    var cyclic_deps: list<string> = self.descend_fn(current_level, module)
-			    ->filter((_, dep_name) => self.parent_chain->index(dep_name) >= 0)
+	return true
+    enddef
 
-	    self.callback_fn(current_level, is_duplicate, module, cyclic_deps)
-	endfor
-    else
-	for module in modules
-	    self.parent_chain->add(module.name)
+    def InDepth_Traverse(modules: list<Module>): void
+	for module in this.SubmoduleOrder(modules)
+	    var is_cyclic_dependency = this.parent_chain->index(module.name) >= 0
+
+	    if this.traverse_direction == TraverseDirection.TopDown
+		this.Callback_Function(this.exported, this.parent_chain->len() + 1, this.CheckExchangeDuplicate(module), module, is_cyclic_dependency)
+	    endif
+
+	    var dependency_list = this.Descend_Function(this.parent_chain->len() + 1, module)
+				    ->filter((_, name): bool => this.project.modules.has_key(name) && this.parent_chain->index(name) < 0)
+				    ->mapnew((_, name): Module => this.project.modules[name])
+
+	    this.parent_chain->add(module.name)
 
 	    try
-		var submodules =
-			    \ self.descend_fn(current_level, module)
-			    \   ->filter((_, dep_name) => has_key(self.project.modules, dep_name) && self.parent_chain->index(dep_name) < 0)
-			    \   ->map((_, dep_name) => self.project.modules[dep_name])
-
-		DependencyWalker_Traverse_Dependencies(self, submodules, current_level + 1)
+		this.InDepth_Traverse(this.SubmoduleOrder(dependency_list))
 	    finally
-		self.parent_chain->remove(-1)
+		this.parent_chain->remove(-1)
 	    endtry
+
+	    if this.traverse_direction == TraverseDirection.ButtomUp
+		this.Callback_Function(this.exported, this.parent_chain->len() + 1, this.CheckExchangeDuplicate(module), module, is_cyclic_dependency)
+	    endif
 	endfor
-    endif
-enddef
+    enddef
 
-def FullDescend(current_level: number, module: Module): list<string>
-    return module['interface'].deps + module['public'].deps + module['private'].deps
-enddef
+    def Traverse_InDepth_ButtomUp(exported: bool, modules: list<Module>,  sibling_traversal: SiblingTraversal = SiblingTraversal.RightToLeft): void
+	this.StartTraversal(exported, TraverseDirection.ButtomUp, sibling_traversal)
+	this.InDepth_Traverse(modules)
+    enddef
 
-g:ProjectConfig_FullDescend = FullDescend
+    def Traverse_InDepth_TopDown(exported: bool, modules: list<Module>, sibling_traversal: SiblingTraversal = SiblingTraversal.LeftToRight): void
+	this.StartTraversal(exported, TraverseDirection.TopDown,  sibling_traversal)
+	this.InDepth_Traverse(modules)
+    enddef
 
-def g:ProjectConfig_SpecificDescend(current_level: number, module: Module): list<string>
-    if current_level == 1
-	return module['private'].deps + module['public'].deps
-    endif
+    def SubmoduleOrder(submodules: list<Module>): list<Module>
+	if this.sibling_traversal == SiblingTraversal.LeftToRight
+	    return submodules
+	endif
 
-    return module['interface'].deps + module['public'].deps
-enddef
+	# BottomUp direction also enumerates siblings by level right-to-left
+	return submodules->copy()->reverse()
+    enddef
 
-var SpecificDescend: DescendFunction = g:ProjectConfig_SpecificDescend
+    def TraverseTargetLevel(modules: list<Module>): bool
+	if this.parent_chain->len() + 1 == this.target_level
+	    var index: number = 0
+
+	    for module in this.SubmoduleOrder(modules)
+		var is_cyclic_dependency: bool = !!(this.parent_chain->index(module.name) >= 0)
+
+		this.Callback_Function(this.exported, this.parent_chain->len() + 1, this.CheckExchangeDuplicate(module), module, is_cyclic_dependency)
+	    endfor
+
+	    return !!modules
+	else
+	    var target_level_reached = false
+
+	    for module in this.SubmoduleOrder(modules)
+		this.parent_chain->add(module.name)
+
+		try
+		    var submodules =
+				\ this.Descend_Function(this.parent_chain->len(), module)
+				\   ->filter((_, module_name): bool => this.project.modules->has_key(module_name) && this.parent_chain->index(module_name) < 0)
+				\   ->mapnew((_, module_name): Module => this.project.modules[module_name])
+
+		    if !!submodules
+			var level_reached = this.TraverseTargetLevel(this.SubmoduleOrder(submodules))
+			target_level_reached = target_level_reached || level_reached
+		    endif
+		finally
+		    this.parent_chain->remove(-1)
+		endtry
+	    endfor
+
+	    return target_level_reached
+	endif
+    enddef
+
+    def Traverse_ByLevel_TopDown(exported: bool, module: Module, modules: list<Module>, sibling_traversal: SiblingTraversal  = SiblingTraversal.LeftToRight): list<string>
+	this.StartTraversal(exported, TraverseDirection.TopDown, sibling_traversal)
+
+	while this.TraverseTargetLevel([ module ]->extend(modules))
+	    ++this.target_level
+	endwhile
+
+	this.Callback_Function(exported, 0, v:false, null_dict, false)
+
+	return this.module_list
+    enddef
+
+    def Traverse_ByLevel_ButtomUp(exported: bool, module: Module, modules: list<Module>, sibling_traversal: SiblingTraversal = SiblingTraversal.RightToLeft): list<string>
+	this.StartTraversal(exported, TraverseDirection.TopDown, sibling_traversal)
+	this.target_level = [ module ]->extend(modules)->mapnew((_, mod) => this.ModuleTreeDepth(mod))->max()
+
+	while this.target_level
+	    this.TraverseTargetLevel([ module ]->extend(modules))
+	    --this.target_level
+	endwhile
+
+	this.Callback_Function(exported, 0, false, null_dict, false)
+
+	return this.module_list
+    enddef
+
+    static def FullDescend(current_level: number, module: Module): list<string>
+	return module->get('interface', { })->get('deps', [ ])
+		+ module->get('public', { })->get('deps', [ ])
+		+ module->get('private', { })->get('deps', [ ])
+    enddef
+
+    static def SpecificDescend(current_level: number, module: Module): list<string>
+	if current_level == 1
+	    return module->get('private', { })->get('deps', [ ]) + module->get('public', { })->get('deps', [ ])
+	endif
+
+	return module->get('interface', { })->get('deps', [ ]) + module->get('public', { })->get('deps', [ ])
+    enddef
+endclass
+
+g:ProjectConfig_FullDescend = DependencyWalker.FullDescend
+g:ProjectConfig_SpecificDescend = DependencyWalker.SpecificDescend
+
+const SpecificDescend: DescendFunction = DependencyWalker.SpecificDescend
 
 # Enumerate each dependency of the given modules, starting with the bottom
 # level of the dependency tree, going up level by level, until the top level
@@ -127,7 +284,7 @@ var SpecificDescend: DescendFunction = g:ProjectConfig_SpecificDescend
 # such during enumeration, after their first occurrence. Dependency cycles
 # are also broken and reported, at the lowest level reached by their loop.
 #
-# callback_fn is called for each module and each dependency, with arguments:
+# Callback_Function is called for each module and each dependency, with arguments:
 #   - current level in the module dependency tree
 #   - duplicate flag, true if this dependency has been enumerated before
 #   - the current node in the tree (the current module)
@@ -139,38 +296,20 @@ var SpecificDescend: DescendFunction = g:ProjectConfig_SpecificDescend
 # top-level modules listed first, and next level modules listed after, and so
 # on.  Duplicates are listed only once, at the earliest (smaller) position
 # where they are first encountered.
-def g:ProjectConfig_TraverseAllDependencies(Callback_Fn: CallbackFunction, project: Project, module: Module, ...modules: list<Module>): list<string>
-    var mod_list = [ module ]->extend(modules)
-    var deps_walker = DependencyWalker_New(DependencyWalker, project, Callback_Fn, FullDescend)
+def TraverseAllDependencies(Callback_Function: CallbackFunction, project: Project, module: Module, ...modules: list<Module>): list<string>
+    var tree_walker: DependencyWalker = DependencyWalker.new(project, Callback_Function, DependencyWalker.FullDescend)
 
-    deps_walker.target_level = mod_list->mapnew((_, mod) => DependencyWalker_Module_Tree_Depth(deps_walker, mod))->max()
+    for exported in [ true, false ]
+	tree_walker.Traverse_ByLevel_ButtomUp(exported, module, modules)
+    endfor
 
-    while !!deps_walker.target_level
-	DependencyWalker_Traverse_Dependencies(deps_walker, mod_list)
-	--deps_walker.target_level
-    endwhile
-
-    Callback_Fn(0, v:false, null_dict, [ ])
-
-    return deps_walker.module_list
+    return tree_walker.module_list
 enddef
 
+g:ProjectConfig_TraverseAllDependencies = TraverseAllDependencies
+
 def Default_Reduce(state: dict<any>, level: number, existing_list: PropertyList, new_list: PropertyList): void
-    if level < state.level
-	state.level = level
-
-	if level == 0
-	    if !empty(state['previous'])
-		InPlace_Append_Unique(existing_list, state['previous']->remove(0, -1))
-	    endif
-	else
-	    if !empty(existing_list)
-		InPlace_Prepend_Unique(state['previous'], existing_list->remove(0, -1))
-	    endif
-	endif
-    endif
-
-    InPlace_Append_Unique(existing_list, new_list)
+    InPlacePrependUnique(existing_list, new_list)
 enddef
 
 class CollectProperties
@@ -186,7 +325,7 @@ class CollectProperties
 	    reducers = [ ]
 
 	    for index in accessors->len()->range()
-		reducers->add(funcref(Default_Reduce, [ { 'level': v:numbermax, 'previous': [ ] } ]))
+		reducers->add(Default_Reduce->funcref([ { } ]))
 	    endfor
 	else
 	    reducers = reduce_fn
@@ -197,16 +336,18 @@ class CollectProperties
 	this.reduce_fn   = reducers
     enddef
 
-    def Dependency_Module(level: number, is_duplicate: bool, module: Module, cyclic_deps: NameList): void
-	if !!level
-	    for [ index, Accessor_Fn ] in this.accessor_fn->items()
-		var new_list: PropertyList = Accessor_Fn(level, is_duplicate, module, cyclic_deps)
-		this.reduce_fn[index](level, this.properties[index], new_list)
-	    endfor
-	else
-	    for index in this.accessor_fn->len()->range()
-		this.reduce_fn[index](level, this.properties[index], [ ])
-	    endfor
+    def Dependency_Module_Callback(external: bool, level: number, is_duplicate: bool, module: Module, is_cyclic_dep: bool): void
+	if external == module->get('external', false)
+	    if !!level
+		for [ index, Accessor_Fn ] in this.accessor_fn->items()
+		    var new_list: PropertyList = Accessor_Fn(level, is_duplicate, module, is_cyclic_dep)
+		    this.reduce_fn[index](level, this.properties[index], new_list)
+		endfor
+	    else
+		for index in this.accessor_fn->len()->range()
+		    this.reduce_fn[index](level, this.properties[index], [ ])
+		endfor
+	    endif
 	endif
     enddef
 endclass
@@ -221,16 +362,10 @@ export def CollectPropertiesWithReducer(
 
     var module_list: list<Module> = [ module ]->extend(modules)
     var collect_props: CollectProperties = CollectProperties.new(accessors, reducers)
-    var deps_walker: dict<any> = DependencyWalker_New(DependencyWalker, project, collect_props.Dependency_Module, SpecificDescend)
+    var tree_walker: DependencyWalker = DependencyWalker.new(project, collect_props.Dependency_Module_Callback, SpecificDescend)
 
-    deps_walker.target_level = module_list->mapnew((_, mod) => DependencyWalker_Module_Tree_Depth(deps_walker, mod))->max()
-
-    while !!deps_walker.target_level
-	DependencyWalker_Traverse_Dependencies(deps_walker, module_list)
-	--deps_walker.target_level
-    endwhile
-
-    deps_walker['callback_fn'](0, v:false, { }, [ ])
+    tree_walker.Traverse_ByLevel_ButtomUp(true, module, modules)
+    tree_walker.Traverse_ByLevel_ButtomUp(false, module, modules)
 
     return collect_props.properties
 enddef
@@ -241,34 +376,30 @@ def g:ProjectConfig_CollectProperties(accessor_fn: list<AccessorFunction>, proje
     return CollectPropertiesWithReducer->call([ accessor_fn, v:none, project, module ]->extend(modules))
 enddef
 
-def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Module, cyclic_deps: NameList): PropertyList
+def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Module, is_cyclic_dep: bool): PropertyList
     var values: PropertyList = [ ]
     var scope_list: list<dict<any>>
 
     if level == 1
-	scope_list = [ module['private'], module['public'] ]
+	scope_list = [ module->get('private', { }), module->get('public', { }) ]
     else
-	scope_list = [ module['public'], module['interface'] ]
+	scope_list = [ module->get('public', { }), module->get('interface', { }) ]
     endif
 
-    var member_list: list<string> = type(members) == v:t_string ? members->split('\.') : members
+    var member_sequence: list<string> = type(members) == v:t_string ? members->split('\.') : members
 
     for scope in scope_list
 	var key_missing: bool = false
 	var value: any = scope
 
-	for member: string in member_list
-	    if has_key(value, member)
+	for member: string in member_sequence
+	    if value->has_key(member)
 		value = value[member]
 	    else
 		key_missing = true
 		break
 	    endif
 	endfor
-
-# 	def g:ProjectConfig_Collect_Other_Properties(accessor_fn: list<AccessorFunction>, project: Project, other_module: Module, ...modules: list<Module>): list<PropertyList>
-# 	    return CollectPropertiesWithReducer->call([ accessor_fn, v:none, project, other_module ]->extend(modules))
-# 	enddef
 
 	if !key_missing
 	    if type(value) == v:t_list

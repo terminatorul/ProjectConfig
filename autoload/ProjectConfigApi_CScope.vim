@@ -182,7 +182,7 @@ def Build_CScope_Database_By_Level(
 
     if current_depth == target_depth
 	if external == module.external
-	    if !empty(module['private'].cscope.db) && index(module_list, module.name) < 0
+	    if !empty(module['private'].cscope.db) && module_list->index(module.name) < 0
 		module_list->add(module.name)
 		Build_CScope_Database(project, module, connections)
 	    endif
