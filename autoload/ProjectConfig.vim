@@ -7,14 +7,19 @@ if !exists('g:ProjectConfig_NERDTreeIntegration')
 endif
 
 function s:LoadProjectConfigApi()
+    if v:version < 901
+	" ProjectConfigApi uses Vim9 script, but Git Bash cames with vim 8.2
+	return
+    endif
+
     let l:script_base = expand('<script>:r')
 
-    source `=fnameescape(l:script_base . 'Api.vim')`
-    source `=fnameescape(l:script_base . 'Api_DependencyWalker.vim')`
-    source `=fnameescape(l:script_base . 'Api_VimPath.vim')`
-    source `=fnameescape(l:script_base . 'Api_CTags.vim')`
-    source `=fnameescape(l:script_base . 'Api_CScope.vim')`
-    source `=fnameescape(l:script_base . 'Api_C_Cxx_Lib.vim')`
+    source `=fnameescape(l:script_base .. 'Api.vim')`
+    source `=fnameescape(l:script_base .. 'Api_DependencyWalker.vim')`
+    source `=fnameescape(l:script_base .. 'Api_VimPath.vim')`
+    source `=fnameescape(l:script_base .. 'Api_CTags.vim')`
+    source `=fnameescape(l:script_base .. 'Api_CScope.vim')`
+    source `=fnameescape(l:script_base .. 'Api_C_Cxx_Lib.vim')`
 
     let s:LoadConfigApi = { -> 0 }
 endfunction
@@ -183,18 +188,18 @@ function ProjectConfig#SetScript(project_name, ...)
 	endif
     else
 	if (has('win32') || has('win64')) && isdirectory(expand('~\vimfiles'))
-	    let l:project_script = expand('~\vimfiles\project\' . l:project_name . '.vim')
+	    let l:project_script = expand('~\vimfiles\project\' .. l:project_name .. '.vim')
 	else
-	    let l:project_script = expand('~/.vim/project/' . l:project_name . '.vim')
+	    let l:project_script = expand('~/.vim/project/' .. l:project_name .. '.vim')
 	endif
     endif
 
     if !exists('l:file_script')
-	if (has('win32') || has('win64')) && filereadable(fnamemodify(l:project_script, ':r') . '_files.vim')
-		let l:file_script = fnamemodify(l:project_script, ':r') . '_files.vim'
+	if (has('win32') || has('win64')) && filereadable(fnamemodify(l:project_script, ':r') .. '_files.vim')
+		let l:file_script = fnamemodify(l:project_script, ':r') .. '_files.vim'
 	else
-	    if filereadable(fnamemodify(l:project_script, ':r') . '.files.vim')
-		let l:file_script = fnamemodify(l:project_script, ':r') . '.files.vim'
+	    if filereadable(fnamemodify(l:project_script, ':r') .. '.files.vim')
+		let l:file_script = fnamemodify(l:project_script, ':r') .. '.files.vim'
 	    else
 		let l:file_script = ''
 	    endif
@@ -208,7 +213,7 @@ function ProjectConfig#SetScript(project_name, ...)
 	\     {
 	\	  'project_name'    : l:project_name,
 	\	  'directory_name'  : fnamemodify(l:directory_name, ':p:gs#\#/#:s#/$##'),
-	\         'pathname_pattern': '\V\^' . fnamemodify(l:directory_name, ':p:gs#\#/#:s#/$##') . '\v((/.*)?/([^.][^/]*))?$',
+	\         'pathname_pattern': '\V\^' .. fnamemodify(l:directory_name, ':p:gs#\#/#:s#/$##') .. '\v((/.*)?/([^.][^/]*))?$',
 	\         'file_script'     : !!strlen(l:file_script) ? fnamemodify(l:file_script, ':p') : '',
 	\         'exclude_list'    : ['COMMIT_EDITMSG', 'MERGE_MSG'],
 	\	  'project_script'  : !!strlen(l:project_script) ? fnamemodify(l:project_script, ':p') : ''
