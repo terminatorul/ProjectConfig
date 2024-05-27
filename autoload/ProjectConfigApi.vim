@@ -37,43 +37,7 @@ export interface Generator
     def LocalConfigCompleteModule(module: Module): void
 endinterface
 
-class DispatchGenerator implements Generator
-    var generators: list<dict<any>>
-
-    def AddProject(project: Project, name: string): void
-	this.generators->foreach((_, gen): void => gen.AddProject(name))
-    enddef
-
-    def SetConfigEntry(project: Project, name: string): void
-	this.generators->foreach((_, gen): void => gen.SetConfigEntry(name))
-    enddef
-
-    def AddModule(project: Project, module: Module, ...modules: list<Module>): void
-	this.generators->foreach((_, gen): void => gen.AddModule->call([ module ]->extend(modules)))
-    enddef
-
-    def LocalConfigInit(): void
-	this.generators->foreach((_, gen): void => gen.LocalConfigInit())
-    enddef
-
-    def UpdateGlobalConfig(module: Module): void
-	this.generators->foreach((_, gen): void => gen.UpdateGlobalConfig(module))
-    enddef
-
-    def LocalConfigInitModule(module: Module): void
-	this.generators->foreach((_, gen): void => gen.LocalConfigInitModule(module))
-    enddef
-
-    def UpdateModuleLocalConfig(module: Module): void
-	this.generators->foreach((_, gen): void => gen.UpdateModuleLocalConfig(module))
-    enddef
-
-    def LocalConfigCompleteModule(module: Module): void
-	this.generators->foreach((_, gen): void => gen.LocalConfigCompleteModule(module))
-    enddef
-endclass
-
-export var Generators: list<Generator> = [ DispatchGenerator.new(g:ProjectConfig_Generators) ]
+export var Generators: list<Generator> = [ ]
 
 # Element-wise comparison for two lists, returns -1, 0, or 1
 export def ListCompare(list1: list<any>, list2: list<any>): number
@@ -495,6 +459,6 @@ export def EnableProjectModules(module_name: string, ...module_names: list<strin
     endfor
 enddef
 
-g:ProjectConfig_EnableVimTags = EnableProjectModules
+g:ProjectConfig_EnableProjectModules = EnableProjectModules
 
 # defcompile
