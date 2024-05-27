@@ -206,7 +206,7 @@ export def SetScript(project_name_arg: string, ...arg_list: list<any>): void
     AddVimListeners()
 enddef
 
-function g:ProjectConfig_DebugVariables()
+def g:ProjectConfig_DebugVariables()
     g:ProjectConfigScript = ProjectConfigScript
     g:ProjectConfig_ApplyScript = ProjectConfig_ApplyScript
-endfunction
+enddef
