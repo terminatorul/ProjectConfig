@@ -2,11 +2,17 @@
 vim9script
 
 var ProjectConfigScript: list<dict<any>> = [ ]
-var ProjectConfig_ApplyScript: bool = false	# used to prevent recursion
+var ProjectConfig_ApplyScript: bool = false	# used to prevent recursion in the main loading function
 var LoadedProjects: list<string> = []
 
 if !g:->has_key('ProjectConfig_NERDTreeIntegration')
     g:ProjectConfig_NERDTreeIntegration = true
+endif
+
+if has('win32') || has('win64')
+    const g:ProjectConfig_PluginApiDir = expand('<script>:h:gs#\#/#')
+else
+    const g:ProjectConfig_PluginApiDir = expand('<script>:h')
 endif
 
 def ApplyProjectConfigScript(full_path: string, project: bool): void

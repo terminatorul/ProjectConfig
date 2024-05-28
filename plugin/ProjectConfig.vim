@@ -1,6 +1,6 @@
 " Vim plugin to apply project specific settings in Vim when working in your
 "   project tree.
-" Last Change: 2023-jan-22
+" Last Change: 2024-may-26
 " Maintainer:  Timothy Madden <terminatorul@gmail.com>
 " License:     The unlicense http://unlicense.org/
 "

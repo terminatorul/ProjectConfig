@@ -1,6 +1,6 @@
 vim9script
 
-import './ProjectConfigApi.vim' as ConfigApi
+import './ProjectConfigApi_Generator.vim' as ConfigApi
 
 type Project = ConfigApi.Project
 type Module  = ConfigApi.Module

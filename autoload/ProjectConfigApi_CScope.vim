@@ -1,6 +1,6 @@
 vim9script
 
-import './ProjectConfigApi.vim' as ProjectConfig
+import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
 type Module = ProjectConfig.Module
 type Project = ProjectConfig.Project
@@ -338,35 +338,13 @@ class CScopeGenerator # implements ProjectConfig.Generator
 			this_module['private']['cscope'] = { db: '' }
 
 			continue
-		    endif		   
+		    endif
 		endif
 	    else
 		this_module['private']['cscope'] = { db: '' }
 
 		continue
 	    endif
-
-	    if !this_module['private']['cscope']->has_key('db')
-		this_module['private']['cscope'].db = CScope_Directory
-	    endif
-
-	    for scope_name in [ 'private', 'public' ]
-		var scope = this_module[scope_name]
-
-		if !scope->has_key('cscope')
-		    scope['cscope'] = { }
-		endif
-
-		for key_name in [ 'build_args', 'lookup_args', 'glob', 'regexp' ]
-		    if !scope['cscope']->has_key(key_name)
-			scope['cscope'][key_name] = [ ]
-		    endif
-
-		    if type(scope['cscope'][key_name]) != v:t_list
-			scope['cscope'][key_name] = [ scope['cscope'][key_name] ]
-		    endif
-		endfor
-	    endfor
 	endfor
     enddef
 

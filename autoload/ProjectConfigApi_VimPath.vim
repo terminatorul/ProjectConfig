@@ -1,12 +1,12 @@
 vim9script
 
-import './ProjectConfigApi.vim' as ProjectConfig
+import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
 type Property = ProjectConfig.Property
 type Module = ProjectConfig.Module
 type Project = ProjectConfig.Project
 
-if !exists('g:ProjectConfig_CleanPathOption')
+if !g:->has_key('ProjectConfig_CleanPathOption')
     g:ProjectConfig_CleanPathOption = true
 endif
 
