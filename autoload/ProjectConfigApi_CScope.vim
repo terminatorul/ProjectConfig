@@ -1,9 +1,12 @@
 vim9script
 
+import './ProjectConfigApi_ProjectModel.vim' as ProjectModel
 import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
 type Module = ProjectConfig.Module
 type Project = ProjectConfig.Project
+type TreeWalker = ProjectModel.DependencyWalker
+type CallbackFunction = ProjectModel.CallbackFunction
 
 export var BuildOptions: list<string> = [ '-q' ]   # '-b' is always used (hard-coded)
 export var LookupOptions: list<string>  = [ '-U' ]  # check file stamps (update cscope database)
@@ -11,9 +14,11 @@ export var LookupOptions: list<string>  = [ '-U' ]  # check file stamps (update 
 g:ProjectConfig_CScopeBuildOptions = BuildOptions
 g:ProjectConfig_CScopeLookupOptions = LookupOptions
 
+var Projects = ProjectConfig.Projects
 var Join_Path = ProjectConfig.JoinPath
 var Shell_Escape = ProjectConfig.ShellEscape
 var InPlace_Append_Unique = ProjectConfig.InPlaceAppendUnique
+var ModuleProperties = ProjectModel.ModuleProperties
 
 # List of default source file extensions, from cscope source code at:
 #   https://sourceforge.net/p/cscope/cscope/ci/master/tree/src/dir.c#l519
@@ -80,29 +85,12 @@ enddef
 # Populate CScope_Path and Options
 Expand_CScope_Command = Expand_CScope_Command_Line
 
-def CScope_Source_Filter(module: Module): list<string>
-    var filters: list<string>
-    var globlist: list<string>
+def CScope_Source_Filter(glob_list: list<string>, regexp_list: list<string>): list<string>
+    var filters: list<string> = empty(glob_list) ? DefaultGlob[ : ] : glob_list[ : ]
 
-    for scope_name in [ 'private', 'public' ]
-	if module[scope_name]['cscope']->has_key('glob')
-	    globlist->extend(module[scope_name]['cscope']['glob'])
-	endif
-    endfor
+    filters->map((_, val) => val->glob2regpat())
 
-    if empty(globlist)
-	globlist = g:ProjectConfig_CScopeDefaultGlob[ : ]
-    endif
-
-    filters = globlist->mapnew((_, val) => val->glob2regpat())
-
-    for scope_name in [ 'private', 'public' ]
-	if module[scope_name]['cscope']->has_key('regexp')
-	    filters->extend(module[scope_name]['cscope'].regexp)
-	endif
-    endfor
-
-    return filters
+    return filters->extend(regexp_list)
 enddef
 
 def Apply_Filters(line_list: list<string>, filters: list<string>): void
@@ -111,19 +99,17 @@ def Apply_Filters(line_list: list<string>, filters: list<string>): void
     line_list->filter((_, name) => name =~ all_filters)
 enddef
 
-def Update_NameFile(module: Module): string
-    var basename =  module['private']['cscope'].db
-    var cscope_dir = fnamemodify(basename, ':h')
+def Update_NameFile(cscope_db: string, source_list: list<string>, recurse: bool, glob_list: list<string>, regexp_list: list<string>): string
+    var basename = cscope_db
+    mkdir(fnamemodify(cscope_db, ':h'), 'p')
 
-    mkdir(cscope_dir, 'p')
-
-    if match(basename, '\.out$') > 0
+    if basename =~ '\.out$'
 	basename = basename[ : -5]
     endif
 
     var namefile = basename .. '.files'
     var old_file_list = filereadable(namefile) ? namefile->readfile() : [ ]
-    var new_file_list = ProjectConfig.ExpandModuleSources(module, CScope_Source_Filter(module))
+    var new_file_list = ProjectConfig.ExpandModuleSources(recurse, source_list, CScope_Source_Filter(glob_list, regexp_list))
 
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
@@ -137,153 +123,107 @@ def Update_NameFile(module: Module): string
     return namefile
 enddef
 
-def Build_CScope_Database(project: Project, module: Module, connections: string): void
-    var namefile: string = Update_NameFile(module)
+def Build_CScope_Database(project: Project, connections: string, exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
+    if exported == module.exported && !is_duplicate
+	var prop_list: list<list<string>> =
+	    [
+		[ 'recurse' ],
+		[ 'src' ],
+		[ 'inc' ],
+		[ 'cscope', 'db' ],
+		[ 'cscope', 'build_args' ],
+		[ 'cscope', 'lookup_args' ],
+		[ 'cscope', 'glob' ],
+		[ 'cscope', 'regexp' ]
+	    ]
+	var recurse: list<bool>
+	var src_list: list<string>
+	var inc_list: list<string>
+	var db_list: list<string>
+	var build_args: list<string>
+	var lookup_args: list<string>
+	var glob_list: list<string>
+	var regexp_list: list<string>
 
-    if empty(namefile)
-	return
-    endif
+	[ recurse, src_list, inc_list, db_list, build_args, lookup_args, glob_list, regexp_list ] = ModuleProperties(prop_list, project, module)
 
-    var output_file = module['private']['cscope'].db
+	db_list->map((_, file) => fnamemodify(file->resolve(), ':p:~:.:gs?\\?/?'))->uniq()
+	recurse->uniq()
 
-    var cscope_command = [ CScope_Path ] ->extend(CScope_Options)
-		\ + project.config['cscope'].build_args + module['cscope']['private'].build_args + module['cscope']['public'].build_args
-		\ + [ '-b', '-i', Shell_Escape(namefile), '-f', Shell_Escape(output_file) ]
+	if db_list->len() != 1
+	    echoerr "Mismatching values given for cscope database file: " db_list
+	endif
 
-    var connection_found = stridx(connections, output_file) >= 0 ? true : false
+	if recurse->len() > 1
+	    echoerr "Mismatching values given for module recurese flag: " recurse
+	else
+	    if empty(recurse)
+		recurse = [ false ]
+	    endif
+	endif
 
-    if connection_found && ProjectConfig.HasWindows
-	# On Windows can not rebuild the cscope database while in use in Vim,
-	# presumably cygwin and msys/mingw as well
-	execute 'cscope kill ' .. fnameescape(output_file)
-    endif
+	var output_file = db_list[0]
 
-    execute '! echo ' .. cscope_command->join(' ')
+	var namefile: string = Update_NameFile(output_file, src_list, recurse[0], glob_list, regexp_list)
 
-    if v:shell_error
-	echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
-		    \ .. ': shell command exited with code ' .. v:shell_error
-    else
-	if ProjectConfig.HasWindows || !connection_found
-	    # this could change order of connections on Windows
-	    execute 'cscope add ' .. fnameescape(output_file)
+	if empty(namefile)
+	    return
+	endif
+
+	var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
+		    \ + project.config['cscope'].build_args + build_args + inc_list->mapnew((_, dir) => '-I' .. dir)
+		    \ + [ '-b', '-i', Shell_Escape(namefile), '-f', Shell_Escape(output_file) ]
+
+	if stridx(connections, output_file) >= 0
+	    # Windows cannot recreate the cscope database file while it is
+	    # used. This will also re-order cscope files if need to the
+	    # expected sequence
+	    execute 'cscope kill ' .. fnameescape(output_file)
+	endif
+
+	execute '! echo ' .. cscope_command->join(' ')
+
+	if v:shell_error
+	    echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
+			\ .. ': shell command exited with code ' .. v:shell_error
+	else
+	    lookup_args->extend(LookupOptions)->extend(project.config['cscope'].lookup_args)
+
+	    if empty(lookup_args)
+		execute 'echo cscope add ' .. fnameescape(output_file)
+	    else
+		execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
+	    endif
 	endif
     endif
 enddef
 
-def Build_CScope_Database_By_Level(
-	current_depth: number,
-	target_depth: number,
-	project: Project,
-	module: Module,
-	external: bool,
-	connections: string,
-	module_list: list<string>): bool
-
-    if current_depth == target_depth
-	if external == module.external
-	    if !empty(module['private'].cscope.db) && module_list->index(module.name) < 0
-		module_list->add(module.name)
-		Build_CScope_Database(project, module, connections)
-	    endif
-	endif
-
-	return true
-    endif
-
-    var target_depth_reached = false
-
-    for submodule_name in module['private'].deps + module['public'].deps
-	if project.modules->has_key(submodule_name)
-	    var depth_reached = Build_CScope_Database_By_Level(
-			current_depth + 1,
-			target_depth,
-			project,
-			project.modules[submodule_name],
-			external,
-			connections,
-			module_list)
-
-	    if depth_reached && !target_depth_reached
-		target_depth_reached = true
-	    endif
-	endif
-    endfor
-
-    return target_depth_reached
-enddef
-
-def Module_Tree_Level_Traversal(
-	connections: string,
-	module_list: list<string>,
-	external: bool,
-	project_name: string,
-	module_name: string,
-	module_names: list<string>): void
-
-    if g:ProjectConfig_Modules->has_key(project_name)
-	Expand_CScope_Command()
-
+export def BuildCScopeDatabase(exported_list: list<bool>, project_name: string, module_name: string, ...module_names: list<string>): void
+    if ProjectConfig.Projects->has_key(project_name)
 	var project: Project = g:ProjectConfig_Modules[project_name]
-	var depth_level: number = 0
-	var depth_level_reached: bool = true
+	var connections: string = 'cscope show'->execute()
+	var Callback_Function: CallbackFunction = funcref(Build_CScope_Database, [ project, connections ])
+	var treeWalker: TreeWalker = TreeWalker.new(project, Callback_Function, TreeWalker.FullDescend)
 
-	while depth_level_reached
-	    depth_level_reached = false
-	    ++depth_level
+	var modules: list<Module> =
+	    [ module_name ]->extend(module_names)
+		->filter((_, name) => project.modules->has_key(name))
+		->mapnew((_, name) => project[name])
 
-	    for name in [ module_name ]->extend(module_names)
-		if project.modules->has_key(name)
-		    var depth_reached: bool = Build_CScope_Database_By_Level(
-				1,
-				depth_level,
-				project,
-				project.modules[name],
-				external,
-				connections,
-				module_list)
-		    if depth_reached && !depth_level_reached
-			depth_level_reached = true
-		    endif
-		endif
+	if !empty(modules)
+	    for exported in exported_list
+		treeWalker.Traverse_ByLevel_TopDown(exported, modules[1], modules[1 : ])
 	    endfor
-	endwhile
-    endif
-enddef
-
-export def BuildCScopeDatabase(project_name: string, module_name: string, ...module_names: list<string>): void
-    var connections: string = 'cscope show'->execute()
-    var module_list: list<string> = [ ]
-
-    Module_Tree_Level_Traversal(connections, module_list, false, project_name, module_name, module_names)
-
-    if !ProjectConfig.HasWindows
-	cscope reset
+	endif
     endif
 enddef
 
 g:ProjectConfig_BuildCScopeDatabase = BuildCScopeDatabase
 
-export def BuildAllCScopeDatabase(project_name: string, module_name: string, ...module_names: list<string>): void
-    var connections: string = 'cscope show'->execute()
-    var module_list: list<string> = [ ]
-
-    if ProjectConfig.Projects->has_key(project_name)
-	Module_Tree_Level_Traversal(connections, module_list, false, project_name, module_name, module_names)
-	Module_Tree_Level_Traversal(connections, module_list, true,  project_name, module_name, module_names)
-
-	if !ProjectConfig.HasWindows
-	    cscope reset
-	endif
-    endif
-enddef
-
-g:ProjectConfig_BuildAllCScopeDatabase = BuildAllCScopeDatabase
-
 export def EnableReScopeCommand(module_name: string, ...module_names: list<string>): void
-    var arglist = "'" .. [ g:ProjectConfig_Project, module_name ]->extend(module_names)->join("', '") .. "'"
-    execute "command ReTag" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildCScopeDatabase(" .. arglist .. ")"
-    execute "command ReTag" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildAllCScopeDatabase(" .. arglist .. ")"
+    var arglist: string = "'" .. [ g:ProjectConfig_Project, module_name ]->extend(module_names)->join("', '") .. "'"
+    execute "command ReScope" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildCScopeDatabase([ false ], " .. arglist .. ")"
+    execute "command ReScope" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildCScopeDatabase([ false, true ], " .. arglist .. ")"
 enddef
 
 def UpdateProjectConfig(project: Project)
@@ -312,14 +252,14 @@ def UpdateProjectConfig(project: Project)
     endif
 enddef
 
-class CScopeGenerator # implements ProjectConfig.Generator
+class CScopeGenerator implements ProjectConfig.Generator
     var name: string = 'cscope'
 
     def AddProject(project: Project, project_name: string): void
 	UpdateProjectConfig(project)
     enddef
 
-    def SetConfigEntry(project: Project, name: string): void
+    def SetProjectConfig(project: Project, name: string): void
 	if name == 'cscope'
 	    UpdateProjectConfig(project)
 
@@ -348,13 +288,22 @@ class CScopeGenerator # implements ProjectConfig.Generator
 	endfor
     enddef
 
-    # def LocalConfigInit(): void
-    # def UpdateGlobalConfig(module: Module): void
-    # def LocalConfigInitModule(module: Module): void
-    # def UpdateModuleLocalConfig(module: Module): void
-    # def LocalConfigCompleteModule(module: Module): void
+    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
+    enddef
+
+    def UpdateGlobalConfig(module: Module): void
+    enddef
+
+    def LocalConfigInitModule(module: Module): void
+    enddef
+
+    def UpdateModuleLocalConfig(module: Module): void
+    enddef
+
+    def LocalConfigCompleteModule(module: Module): void
+    enddef
 endclass
 
-# eval g:ProjectConfig_Generators->add(g:ProjectConfig_CScope)
+ProjectConfig.Generators->add(CScopeGenerator.new())
 
 defcompile

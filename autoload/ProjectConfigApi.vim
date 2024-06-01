@@ -15,7 +15,7 @@ export const DirectorySeparator: string = ConfigApi.DirectorySeparator
 export const DevNull: string = ConfigApi.DevNull
 
 export var JoinPath: func(...list<string>): string = ConfigApi.JoinPath
-export var SetConfigEntry: func(string, any): void = ConfigApi.SetConfigEntry
+export var SetProjectConfig: func(string, any): void = ConfigApi.SetProjectConfig
 export var CreateModule: func(string, bool): Module = ConfigApi.CreateModule
 export var AddModule: func(Module, ...list<Module>): void = ConfigApi.AddModule
 export var AddModuleAutoCmd: func(Module, any, list<string>): void = ConfigApi.AddModuleAutoCmd

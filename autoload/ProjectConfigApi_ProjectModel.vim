@@ -7,7 +7,7 @@ export type Module = dict<any>
 export type Project = dict<any>
 export type CallbackFunction = func(bool, number, bool, Module, bool): void
 export type AccessorFunction = func(number, bool, Module, bool): PropertyList
-export type ReduceFunction   = func(number, PropertyList, PropertyList): void
+export type ReducerFunction  = func(number, PropertyList, PropertyList): void
 export type DescendFunction  = func(number, Module): NameList
 
 # duplicate values that appear sooner have priority and will be kept over
@@ -232,7 +232,7 @@ export class DependencyWalker
 	endif
     enddef
 
-    def Traverse_ByLevel_TopDown(exported: bool, module: Module, modules: list<Module>, sibling_traversal: SiblingTraversal  = SiblingTraversal.LeftToRight): list<string>
+    def Traverse_ByLevel_TopDown(exported: bool, module: Module, modules: list<Module>, sibling_traversal: SiblingTraversal = SiblingTraversal.LeftToRight): list<string>
 	this.StartTraversal(exported, TraverseDirection.TopDown, sibling_traversal)
 
 	while this.TraverseTargetLevel([ module ]->extend(modules))
@@ -259,17 +259,15 @@ export class DependencyWalker
     enddef
 
     static def FullDescend(current_level: number, module: Module): list<string>
-	return module->get('interface', { })->get('deps', [ ])
-		+ module->get('public', { })->get('deps', [ ])
-		+ module->get('private', { })->get('deps', [ ])
+	return module['interface']['deps'] + module['public']['deps'] + module['private']['deps']
     enddef
 
     static def SpecificDescend(current_level: number, module: Module): list<string>
 	if current_level == 1
-	    return module->get('private', { })->get('deps', [ ]) + module->get('public', { })->get('deps', [ ])
+	    return module['private']['deps' ] + module['public']['deps']
 	endif
 
-	return module->get('interface', { })->get('deps', [ ]) + module->get('public', { })->get('deps', [ ])
+	return module['interface']['deps'] + module['public']['deps']
     enddef
 endclass
 
@@ -315,25 +313,25 @@ enddef
 class CollectProperties
     var properties:  list<PropertyList>
     var accessor_fn: list<AccessorFunction>
-    var reduce_fn:   list<ReduceFunction>
+    var reducer_fn:  list<ReducerFunction>
 
-    def new(accessor_fn: any, reduce_fn: list<ReduceFunction> = null_list)
+    def new(accessor_fn: any, reducer_fn: list<ReducerFunction> = null_list)
 	var accessors: list<AccessorFunction> = type(accessor_fn) == v:t_list ? accessor_fn : [ accessor_fn ]
-	var reducers: list<ReduceFunction> = null_list
+	var reducers: list<ReducerFunction> = null_list
 
-	if empty(reduce_fn)
+	if empty(reducer_fn)
 	    reducers = [ ]
 
 	    for index in accessors->len()->range()
 		reducers->add(Default_Reduce->funcref([ { } ]))
 	    endfor
 	else
-	    reducers = reduce_fn
+	    reducers = reducer_fn
 	endif
 
 	this.properties  = [ [ ] ]->repeat(accessors->len())->deepcopy(1)
 	this.accessor_fn = accessors
-	this.reduce_fn   = reducers
+	this.reducer_fn   = reducers
     enddef
 
     def Dependency_Module_Callback(external: bool, level: number, is_duplicate: bool, module: Module, is_cyclic_dep: bool): void
@@ -341,11 +339,11 @@ class CollectProperties
 	    if !!level
 		for [ index, Accessor_Fn ] in this.accessor_fn->items()
 		    var new_list: PropertyList = Accessor_Fn(level, is_duplicate, module, is_cyclic_dep)
-		    this.reduce_fn[index](level, this.properties[index], new_list)
+		    this.reducer_fn[index](level, this.properties[index], new_list)
 		endfor
 	    else
 		for index in this.accessor_fn->len()->range()
-		    this.reduce_fn[index](level, this.properties[index], [ ])
+		    this.reducer_fn[index](level, this.properties[index], [ ])
 		endfor
 	    endif
 	endif
@@ -354,7 +352,7 @@ endclass
 
 export def CollectPropertiesWithReducer(
 	    accessors:  list<AccessorFunction>,
-	    reducers:   list<ReduceFunction>,
+	    reducers:   list<ReducerFunction>,
 	    project:    Project,
 	    module:     Module,
 	    ...modules: list<Module>
@@ -413,11 +411,13 @@ def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Mo
     return values
 enddef
 
-def g:ProjectConfig_ModuleProperties(members: any, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
+export def ModuleProperties(members: any, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
     var member_list: list<string> = type(members) == v:t_list ? members : [ members ]
     var accessor_fn: list<AccessorFunction> = member_list->mapnew((_, member) => funcref(Default_Accessor, [ member ]))
 
     return CollectPropertiesWithReducer->call([ accessor_fn, null_list, project, module ]->extend(modules))
 enddef
+
+g:ProjectConfig_ModuleProperties = ModuleProperties
 
 # defcompile

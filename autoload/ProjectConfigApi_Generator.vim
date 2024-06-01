@@ -27,10 +27,10 @@ export type Project  = ProjectModel.Project
 
 export interface Generator
     def AddProject(project: Project, project_name: string): void
-    def SetConfigEntry(project: Project, name: string): void
+    def SetProjectConfig(project: Project, name: string): void
     def AddModule(project: Project, module: Module, ...modules: list<Module>): void
 
-    def LocalConfigInit(): void
+    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
     def UpdateGlobalConfig(module: Module): void
     def LocalConfigInitModule(module: Module): void
     def UpdateModuleLocalConfig(module: Module): void
@@ -77,16 +77,16 @@ export var ListAppendUnique     = ProjectModel.ListAppendUnique
 export var InPlacePrependUnique = ProjectModel.InPlacePrependUnique
 export var ListPrependUnique    = ProjectModel.ListPrependUnique
 
-export def ExpandModuleSources(module: Module, filters: list<string> = [ ]): list<string>
+export def ExpandModuleSources(recurse: bool, src_list: list<string>, filters: list<string> = [ ]): list<string>
     var source_list: list<string> = [ ]
 
-    for source_glob in module['private'].src + module['public'].src
+    for source_glob in src_list
 	var descend_glob: string
 	var run_filter: bool
 	var file_list
 
 	if isdirectory(source_glob)
-	    if module.recurse
+	    if recurse
 		descend_glob = source_glob .. '/**'
 		run_filter = false
 	    else
@@ -328,17 +328,17 @@ enddef
 
 g:ProjectConfig_ShellEscape = ShellEscape
 
-export def SetConfigEntry(name: string, value: any): void
+export def SetProjectConfig(name: string, value: any): void
     var project: Project = AddCurrentProject()
 
     project.config[name] = value
 
     for generator in Generators
-	generator.SetConfigEntry(project, name)
+	generator.SetProjectConfig(project, name)
     endfor
 enddef
 
-g:ProjectConfig_SetConfigEntry = SetConfigEntry
+g:ProjectConfig_SetConfigEntry = SetProjectConfig
 
 def GlobalUpdate_InDepth_ButtomUp_Traverse_Module(
 	    generators:		list<Generator>,
@@ -437,7 +437,7 @@ def LocalUpdate_InDepth_ButtomUp_ReTraverse(generators: list<Generator>, process
 enddef
 
 export def EnableProjectModules(module_name: string, ...module_names: list<string>): void
-    Generators->foreach((_, gen: Generator): void => gen.LocalConfigInit())
+    Generators->foreach((_, gen: Generator): void => gen.LocalConfigInit->call([ module_name ]->extend(module_names)))
 
     var project = AddCurrentProject()
     var processed_modules: list<string> = [ ]

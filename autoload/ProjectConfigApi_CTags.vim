@@ -143,7 +143,7 @@ class CTagsGenerator implements ProjectConfig.Generator
 	endif
     enddef
 
-    def SetConfigEntry(project: Project, name: string): void
+    def SetProjectConfig(project: Project, name: string): void
 	if name == 'ctags_args'
 	    if type(project.config[name]) != v:t_list
 		project.config[name] = [ project.config[name] ]
@@ -177,7 +177,7 @@ class CTagsGenerator implements ProjectConfig.Generator
 
     # Notifies the generator is enabled for a new project, and module
     # tree traversal shall start after
-    def LocalConfigInit(): void
+    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
 	var project = ProjectConfig.AddCurrentProject()
 	project.config['orig_tags'] = &g:tags
 
