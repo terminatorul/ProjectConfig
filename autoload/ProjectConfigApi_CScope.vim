@@ -164,6 +164,11 @@ def Build_CScope_Database(project: Project, connections: string, exported: bool,
 
 	var output_file = db_list[0]
 
+	if empty(output_file)
+	    # no request for cscope generator for this module
+	    return
+	endif
+
 	var namefile: string = Update_NameFile(output_file, src_list, recurse[0], glob_list, regexp_list)
 
 	if empty(namefile)
