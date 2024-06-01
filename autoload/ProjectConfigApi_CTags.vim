@@ -11,6 +11,16 @@ export var CxxOptions =
 	'--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
     ]
 
+export var PhpOptions =
+    [
+	'--languages=+php,sql',
+	'--recurse',
+	'--fields=+lzkKErSt',
+	'--kinds-SQL=+p',
+	'--extras=+{qualified}{inputFile}{reference}',
+	'--totals'
+    ]
+
 if ProjectConfig.HasWindows
     CxxOptions->extend(
 	[
