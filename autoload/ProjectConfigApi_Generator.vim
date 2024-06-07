@@ -118,7 +118,7 @@ g:ProjectConfig_ExpandModuleSources = ExpandModuleSources
 
 export var Projects: dict<Project> = { }
 
-g:ProjectConfig_Modules = Projects
+g:ProjectConfig_Projects = Projects
 
 export def AddCurrentProject(): Project
     if Projects->has_key(g:ProjectConfig_Project)
@@ -158,7 +158,7 @@ enddef
 
 g:ProjectConfig_Module = CreateModule
 
-# Add all modules to global g:ProjectConfig_Modules
+# Add all modules to global g:ProjectConfig_Projects
 # and fill in default fields for a module
 export def AddModule(module: Module, ...modules: list<Module>)
     var module_list: list<Module> = [ module ]->extend(modules)

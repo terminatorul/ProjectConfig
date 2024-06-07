@@ -3,16 +3,32 @@ vim9script
 import './ProjectConfigApi_ProjectModel.vim' as ProjectModel
 import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
+type Property = ProjectConfig.Property
 type Module = ProjectConfig.Module
 type Project = ProjectConfig.Project
 type TreeWalker = ProjectModel.DependencyWalker
 type CallbackFunction = ProjectModel.CallbackFunction
 
-export var BuildOptions: list<string> = [ '-q' ]   # '-b' is always used (hard-coded)
-export var LookupOptions: list<string>  = [ '-U' ]  # check file stamps (update cscope database)
+export var BuildOptions: list<string> =
+    g:->has_key('ProjectConfig_CScopeBuildOptions') ?
+	g:ProjectConfig_CScopeBuildOptions :
+	[ '-b', '-q' ]   # '-b' is always expected ("build database")
 
-g:ProjectConfig_CScopeBuildOptions = BuildOptions
-g:ProjectConfig_CScopeLookupOptions = LookupOptions
+export var LookupOptions: list<string> =
+    g:->has_key('ProjectConfig_CScopeLookupOptions') ?
+	g:ProjectConfig_CScopeLookupOptions :
+	[ '-U' ]  # check file stamps (update cscope database)
+
+function g:BuildCScopeCommand(command_args, namefile, db_file)
+    return command_args->extend([ '-i', namefile, '-f', db_file ])
+endfuncti
+
+# add namefile and output db file to cscope command line
+export var BuildCommand: func(list<string>, string, string): list<string> =
+    g:->has_key('ProjectConfig_CScopeBuildCommand') ?
+ 	(command_args: list<string>, namefile: string, db_file: string): list<string> => g:BuildCScopeCommand(command_args, namefile, db_file) :
+	(command_args: list<string>, namefile: string, db_file: string): list<string> => command_args->extend([ '-i', namefile, '-f', db_file ])
+
 
 var Projects = ProjectConfig.Projects
 var Join_Path = ProjectConfig.JoinPath
@@ -57,6 +73,7 @@ export var CScope_Options: list<string>
 
 var Expand_CScope_Command: func(): void
 
+# Populates CScope_Path and Options
 def Expand_CScope_Command_Line()
     if g:->has_key('ProjectConfig_CScope_Executable')
 	if type(g:ProjectConfig_CScope_Executable) == v:t_list
@@ -82,8 +99,96 @@ def Expand_CScope_Command_Line()
     }
 enddef
 
-# Populate CScope_Path and Options
+# Populates CScope_Path and Options on first use
 Expand_CScope_Command = Expand_CScope_Command_Line
+
+class CScopeProperties
+    var recurse: bool
+    var src_list: list<string>
+    var inc_list: list<string>
+    var db: string
+    var build_args: list<string>
+    var lookup_args: list<string>
+    var cscope_args: list<string>
+    var glob_list: list<string>
+    var regexp_list: list<string>
+
+    def new(module: Module): void
+	var prop_list: list<list<string>> =
+	    [
+		[ 'recurse' ],
+		[ 'src' ],
+		[ 'inc' ],
+		[ 'cscope', 'db' ],
+		[ 'cscope', 'build_args' ],
+		[ 'cscope', 'lookup_args' ],
+		[ 'cscope', 'args' ],
+		[ 'cscope', 'glob' ],
+		[ 'cscope', 'regexp' ]
+	    ]
+
+	var recurse: list<bool>
+	var db_list: list<string>
+
+	[
+		 recurse,
+	    this.src_list,
+	    this.inc_list,
+		 db_list,
+	    this.build_args,
+	    this.lookup_args,
+	    this.cscope_args,
+	    this.glob_list,
+	    this.regexp_list
+	]
+	    = ModuleProperties(prop_list, project, module)
+
+	recurse->uniq()
+	db_list->map((_, file) => fnamemodify(file->resolve(), ':p:~:.:gs?\\?/?'))->uniq()
+
+	if recurse->len() > 1
+	    echoerr "Mismatching values given for module recurese flag: " recurse
+	endif
+
+	if db_list->len() != 1
+	    echoerr "Mismatching values given for cscope database file: " db_list
+	endif
+
+	this.recurse = recurse->add(false)[0]
+	this.db = db_list->add('')[0]
+    enddef
+endclass
+
+def Vim_Disconnect_CScope_Database(connections: string, db_file: string)
+    if stridx(connections, db_file) >= 0
+	# Windows cannot recreate the cscope database file while it is
+	# used. This will also re-order cscope files if need to the
+	# expected sequence
+	execute 'cscope kill ' .. fnameescape(db_file)
+    endif
+enddef
+
+def Vim_Connect_CScope_Database(project: Project, exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
+    if exported == module.exported && !is_duplicate
+	var properties: CScopeProperties = CScopeProperties.new(module)
+	var output_file: string = properties.db
+
+	if empty(output_file)
+	    # no request for cscope generator for this module
+	    return
+	endif
+
+	var lookup_args = LookupOptions->copy()->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].lookup_args)
+
+	lookup_args->extend(properties.lookup_args)
+
+	if empty(lookup_args)
+	    execute 'echo cscope add ' .. fnameescape(output_file)
+	else
+	    execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
+	endif
+    endif
+enddef
 
 def CScope_Source_Filter(glob_list: list<string>, regexp_list: list<string>): list<string>
     var filters: list<string> = empty(glob_list) ? DefaultGlob[ : ] : glob_list[ : ]
@@ -99,9 +204,9 @@ def Apply_Filters(line_list: list<string>, filters: list<string>): void
     line_list->filter((_, name) => name =~ all_filters)
 enddef
 
-def Update_NameFile(cscope_db: string, source_list: list<string>, recurse: bool, glob_list: list<string>, regexp_list: list<string>): string
-    var basename = cscope_db
-    mkdir(fnamemodify(cscope_db, ':h'), 'p')
+def Update_NameFile(properties: CScopeProperties): string
+    var basename = properties.db
+    mkdir(fnamemodify(basename, ':h'), 'p')
 
     if basename =~ '\.out$'
 	basename = basename[ : -5]
@@ -109,7 +214,7 @@ def Update_NameFile(cscope_db: string, source_list: list<string>, recurse: bool,
 
     var namefile = basename .. '.files'
     var old_file_list = filereadable(namefile) ? namefile->readfile() : [ ]
-    var new_file_list = ProjectConfig.ExpandModuleSources(recurse, source_list, CScope_Source_Filter(glob_list, regexp_list))
+    var new_file_list = ProjectConfig.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filter(properties.glob_list, properties.regexp_list))
 
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
@@ -125,87 +230,41 @@ enddef
 
 def Build_CScope_Database(project: Project, connections: string, exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
     if exported == module.exported && !is_duplicate
-	var prop_list: list<list<string>> =
-	    [
-		[ 'recurse' ],
-		[ 'src' ],
-		[ 'inc' ],
-		[ 'cscope', 'db' ],
-		[ 'cscope', 'build_args' ],
-		[ 'cscope', 'lookup_args' ],
-		[ 'cscope', 'glob' ],
-		[ 'cscope', 'regexp' ]
-	    ]
-	var recurse: list<bool>
-	var src_list: list<string>
-	var inc_list: list<string>
-	var db_list: list<string>
-	var build_args: list<string>
-	var lookup_args: list<string>
-	var glob_list: list<string>
-	var regexp_list: list<string>
-
-	[ recurse, src_list, inc_list, db_list, build_args, lookup_args, glob_list, regexp_list ] = ModuleProperties(prop_list, project, module)
-
-	db_list->map((_, file) => fnamemodify(file->resolve(), ':p:~:.:gs?\\?/?'))->uniq()
-	recurse->uniq()
-
-	if db_list->len() != 1
-	    echoerr "Mismatching values given for cscope database file: " db_list
-	endif
-
-	if recurse->len() > 1
-	    echoerr "Mismatching values given for module recurese flag: " recurse
-	else
-	    if empty(recurse)
-		recurse = [ false ]
-	    endif
-	endif
-
-	var output_file = db_list[0]
+	var properties: CScopeProperties = CScopeProperties.new(module)
+	var output_file: string = properties.db
 
 	if empty(output_file)
 	    # no request for cscope generator for this module
 	    return
 	endif
 
-	var namefile: string = Update_NameFile(output_file, src_list, recurse[0], glob_list, regexp_list)
+	var namefile: string = Update_NameFile(properties)
 
 	if empty(namefile)
 	    return
 	endif
 
 	var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
-		    \ + project.config['cscope'].build_args + build_args + inc_list->mapnew((_, dir) => '-I' .. dir)
-		    \ + [ '-b', '-i', Shell_Escape(namefile), '-f', Shell_Escape(output_file) ]
+		    \ ->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].build_args)
+		    \ ->extend(properties.cscope_args)->extend(properties.build_args)
+		    \ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  dir ])->flattennew())
 
-	if stridx(connections, output_file) >= 0
-	    # Windows cannot recreate the cscope database file while it is
-	    # used. This will also re-order cscope files if need to the
-	    # expected sequence
-	    execute 'cscope kill ' .. fnameescape(output_file)
-	endif
+	cscope_command = BuildCommand(cscope_command, Shell_Escape(namefile), Shell_Escape(output_file))
+
+	Vim_Disconnect_CScope_Database(connections, output_file)
 
 	execute '! echo ' .. cscope_command->join(' ')
 
 	if v:shell_error
 	    echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
 			\ .. ': shell command exited with code ' .. v:shell_error
-	else
-	    lookup_args->extend(LookupOptions)->extend(project.config['cscope'].lookup_args)
-
-	    if empty(lookup_args)
-		execute 'echo cscope add ' .. fnameescape(output_file)
-	    else
-		execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
-	    endif
 	endif
     endif
 enddef
 
 export def BuildCScopeDatabase(exported_list: list<bool>, project_name: string, module_name: string, ...module_names: list<string>): void
     if ProjectConfig.Projects->has_key(project_name)
-	var project: Project = g:ProjectConfig_Modules[project_name]
+	var project: Project = g:ProjectConfig_Projects[project_name]
 	var connections: string = 'cscope show'->execute()
 	var Callback_Function: CallbackFunction = funcref(Build_CScope_Database, [ project, connections ])
 	var treeWalker: TreeWalker = TreeWalker.new(project, Callback_Function, TreeWalker.FullDescend)
@@ -220,6 +279,8 @@ export def BuildCScopeDatabase(exported_list: list<bool>, project_name: string, 
 		treeWalker.Traverse_ByLevel_TopDown(exported, modules[1], modules[1 : ])
 	    endfor
 	endif
+
+	# VimConnectCScopeDatabase()
     endif
 enddef
 
@@ -281,14 +342,10 @@ class CScopeGenerator implements ProjectConfig.Generator
 			this_module['private']['cscope'] = { db: CScope_Directory }
 		    else
 			this_module['private']['cscope'] = { db: '' }
-
-			continue
 		    endif
 		endif
 	    else
 		this_module['private']['cscope'] = { db: '' }
-
-		continue
 	    endif
 	endfor
     enddef
