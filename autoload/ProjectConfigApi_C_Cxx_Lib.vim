@@ -1,6 +1,6 @@
 vim9script
 
-import './ProjectConfigApi_Generator.vim' as ConfigApi
+import './ProjectConfigApi_Generator.vim' as ConfigApi " adfsad
 
 type Project = ConfigApi.Project
 type Module  = ConfigApi.Module

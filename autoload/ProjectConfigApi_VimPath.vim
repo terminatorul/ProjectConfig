@@ -27,7 +27,7 @@ class VimPathGenerator implements ProjectConfig.Generator
 
     # Notifies the generator is enabled for a new project, and module
     # traversal shall start after
-    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
+    def LocalConfigInit(module: Module, ...modules: list<Module>): void
 	if !!g:ProjectConfig_CleanPathOption
 	    set path-=
 	endif
@@ -96,4 +96,5 @@ endclass
 
 ProjectConfig.Generators->add(VimPathGenerator.new())
 
-# defcompile
+#
+defcompile

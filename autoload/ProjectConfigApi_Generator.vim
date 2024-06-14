@@ -23,6 +23,34 @@ export type Property = ProjectModel.Property
 export type Module   = ProjectModel.Module
 export type Project  = ProjectModel.Project
 
+export var Projects: dict<Project> = { }
+
+g:ProjectConfig_Projects = Projects
+
+export def AddCurrentProject(): Project
+    if Projects->has_key(g:ProjectConfig_Project)
+	return Projects[g:ProjectConfig_Project]
+    endif
+
+    Projects[g:ProjectConfig_Project] = { 'config': { }, 'modules': { } }
+
+    var project: Project = Projects[g:ProjectConfig_Project]
+
+    for generator in Generators
+	generator.AddProject(project, g:ProjectConfig_Project)
+    endfor
+
+    return project
+enddef
+
+g:ProjectConfig_AddCurrentProject = AddCurrentProject
+
+export def LookupModuleList(module_name: any, ...module_names: list<any>): list<Module>
+    var project = AddCurrentProject()
+
+    return ProjectModel.LookupProjectModules(project, module_name, module_names)
+enddef
+
 # export const null_Module: Module = v:null_dict
 
 export interface Generator
@@ -30,7 +58,7 @@ export interface Generator
     def SetProjectConfig(project: Project, name: string): void
     def AddModule(project: Project, module: Module, ...modules: list<Module>): void
 
-    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
+    def LocalConfigInit(module: Module, ...modules: list<Module>): void
     def UpdateGlobalConfig(module: Module): void
     def LocalConfigInitModule(module: Module): void
     def UpdateModuleLocalConfig(module: Module): void
@@ -70,73 +98,12 @@ export def ListCompare(list1: list<any>, list2: list<any>): number
     return 0
 enddef
 
-g:ProjectConfig_ListCompare =  ListCompare
+g:ProjectConfig_ListCompare = ListCompare
 
 export var InPlaceAppendUnique  = ProjectModel.InPlaceAppendUnique
 export var ListAppendUnique     = ProjectModel.ListAppendUnique
 export var InPlacePrependUnique = ProjectModel.InPlacePrependUnique
 export var ListPrependUnique    = ProjectModel.ListPrependUnique
-
-export def ExpandModuleSources(recurse: bool, src_list: list<string>, filters: list<string> = [ ]): list<string>
-    var source_list: list<string> = [ ]
-
-    for source_glob in src_list
-	var descend_glob: string
-	var run_filter: bool
-	var file_list
-
-	if isdirectory(source_glob)
-	    if recurse
-		descend_glob = source_glob .. '/**'
-		run_filter = false
-	    else
-		descend_glob = source_glob .. '/*'
-		run_filter = true
-	    endif
-	else
-	    descend_glob = source_glob
-	    run_filter = true
-	endif
-
-	var file_list: list<string> = descend_glob->glob(true, true)
-
-	if filters
-	    Apply_Filters(file_list, filters)
-	else
-
-	if run_filter
-	    file_list->filter((_, val) => !isdirectory(val))
-	endif
-
-	InPlace_Append_Unique(source_list, file_list)
-    endfor
-
-    return source_list
-enddef
-
-g:ProjectConfig_ExpandModuleSources = ExpandModuleSources
-
-export var Projects: dict<Project> = { }
-
-g:ProjectConfig_Projects = Projects
-
-export def AddCurrentProject(): Project
-    if Projects->has_key(g:ProjectConfig_Project)
-	return Projects[g:ProjectConfig_Project]
-    endif
-
-    Projects[g:ProjectConfig_Project] = { 'config': { }, 'modules': { } }
-
-    var project: Project = Projects[g:ProjectConfig_Project]
-
-    for generator in Generators
-	generator.AddProject(project, g:ProjectConfig_Project)
-    endfor
-
-    return project
-enddef
-
-g:ProjectConfig_AddCurrentProject = AddCurrentProject
 
 # Construct and return a new empty project module with given name
 export def CreateModule(name: string, external: bool = false): Module
@@ -436,29 +403,29 @@ def LocalUpdate_InDepth_ButtomUp_ReTraverse(generators: list<Generator>, process
     endif
 enddef
 
-export def EnableProjectModules(module_name: string, ...module_names: list<string>): void
-    Generators->foreach((_, gen: Generator): void => gen.LocalConfigInit->call([ module_name ]->extend(module_names)))
-
+export def EnableProjectModules(module_name: any, ...module_names: list<any>): void
     var project = AddCurrentProject()
+
+    var modules: list<Module> = ProjectModel.LookupProjectModules->call([project, module_name ]->extend(module_names))
+
+    Generators->foreach((_, gen: Generator): void => gen.LocalConfigInit->call(modules))
+
     var processed_modules: list<string> = [ ]
 
     for external in [ true, false ]
-	for name in [ module_name ]->extend(module_names)
-	    if project.modules->has_key(name)
-		GlobalUpdate_InDepth_ButtomUp_Traverse_Module(Generators, processed_modules, external, project.modules[name])
-	    endif
+	for current_module in modules
+	    GlobalUpdate_InDepth_ButtomUp_Traverse_Module(Generators, processed_modules, external, current_module)
 	endfor
     endfor
 
     processed_modules = [ ]
 
-    for name in [ module_name ]->extend(module_names)
-	if project.modules->has_key(name)
-	    LocalUpdate_InDepth_ButtomUp_ReTraverse(Generators, processed_modules, project.modules[module_name])
-	endif
+    for current_module in modules
+	LocalUpdate_InDepth_ButtomUp_ReTraverse(Generators, processed_modules, current_module)
     endfor
 enddef
 
 g:ProjectConfig_EnableProjectModules = EnableProjectModules
 
-# defcompile
+#
+defcompile

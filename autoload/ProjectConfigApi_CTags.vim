@@ -1,17 +1,20 @@
 vim9script
 
+import './ProjectConfigApi_ProjectModel.vim' as ProjectModel
 import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
 type Module  = ProjectConfig.Module
 type Project = ProjectConfig.Project
 
-export var CxxOptions =
+var ListModuleNames = ProjectModel.ListModuleNames
+
+export var CxxOptions: list<string> =
     [
 	'--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
 	'--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
     ]
 
-export var PhpOptions =
+export var PhpOptions: list<string> =
     [
 	'--languages=+php,sql',
 	'--recurse',
@@ -133,8 +136,8 @@ enddef
 
 g:ProjectConfig_BuildAllTags = BuildAllTags
 
-export def EnableReTagCommand(module_name: string, ...module_names: list<string>): void
-    var arglist = "'" .. [ g:ProjectConfig_Project, module_name ]->extend(module_names)->join("', '") .. "'"
+export def EnableReTagCommand(module_name: any, ...module_names: list<any>): void
+    var arglist = "'" .. (<list<string>>[ g:ProjectConfig_Project ])->extend(ListModuleNames->call([ module_name ]->extend(module_names)))->join("', '") .. "'"
     execute "command ReTag" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildTags(" .. arglist .. ")"
     execute "command ReTag" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildAllTags(" .. arglist .. ")"
 enddef
@@ -187,8 +190,8 @@ class CTagsGenerator implements ProjectConfig.Generator
 
     # Notifies the generator is enabled for a new project, and module
     # tree traversal shall start after
-    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
-	var project = ProjectConfig.AddCurrentProject()
+    def LocalConfigInit(module: Module, ...modules: list<Module>): void
+	var project: Project = ProjectConfig.AddCurrentProject()
 	project.config['orig_tags'] = &g:tags
 
 	this.global_tags = &g:tags
@@ -247,4 +250,5 @@ endclass
 
 ProjectConfig.Generators->add(CTagsGenerator.new())
 
-# defcompile
+#
+defcompile

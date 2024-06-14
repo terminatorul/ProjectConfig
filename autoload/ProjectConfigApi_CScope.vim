@@ -198,10 +198,7 @@ def CScope_Source_Filter(glob_list: list<string>, regexp_list: list<string>): li
     return filters->extend(regexp_list)
 enddef
 
-def Apply_Filters(line_list: list<string>, filters: list<string>): void
-    var all_filters: string = filters->join('\|')
-
-    line_list->filter((_, name) => name =~ all_filters)
+def VimConnectCScopeDatabase()
 enddef
 
 def Update_NameFile(properties: CScopeProperties): string
@@ -214,7 +211,7 @@ def Update_NameFile(properties: CScopeProperties): string
 
     var namefile = basename .. '.files'
     var old_file_list = filereadable(namefile) ? namefile->readfile() : [ ]
-    var new_file_list = ProjectConfig.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filter(properties.glob_list, properties.regexp_list))
+    var new_file_list = ProjectModel.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filter(properties.glob_list, properties.regexp_list))
 
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
@@ -287,7 +284,12 @@ enddef
 g:ProjectConfig_BuildCScopeDatabase = BuildCScopeDatabase
 
 export def EnableReScopeCommand(module_name: string, ...module_names: list<string>): void
-    var arglist: string = "'" .. [ g:ProjectConfig_Project, module_name ]->extend(module_names)->join("', '") .. "'"
+    var arglist: string = "'"
+	.. (<list<string>>[ g:ProjectConfig_Project ])
+		->extend(ProjectModel.ListModuleNames->call([ module_name ]->extend(module_names)))
+		->join("', '")
+	.. "'"
+
     execute "command ReScope" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildCScopeDatabase([ false ], " .. arglist .. ")"
     execute "command ReScope" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildCScopeDatabase([ false, true ], " .. arglist .. ")"
 enddef
@@ -350,7 +352,8 @@ class CScopeGenerator implements ProjectConfig.Generator
 	endfor
     enddef
 
-    def LocalConfigInit(module_name: string, ...module_names: list<string>): void
+    def LocalConfigInit(module: Module, ...modules: list<Module>): void
+	# VimConnectCScopeDatabases([ module ]->extend(modules))
     enddef
 
     def UpdateGlobalConfig(module: Module): void
@@ -368,4 +371,5 @@ endclass
 
 ProjectConfig.Generators->add(CScopeGenerator.new())
 
+#
 defcompile

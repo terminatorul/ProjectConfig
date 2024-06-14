@@ -60,6 +60,63 @@ enddef
 
 g:ProjectConfig_ListPrependUnique = ListPrependUnique
 
+def Apply_Filters(line_list: list<string>, filters: list<string>): void
+    var all_filters: string = filters->join('\|')
+
+    line_list->filter((_, name) => name =~ all_filters)
+enddef
+
+export def ExpandModuleSources(recurse: bool, input_sources: list<string>, filters: list<string> = [ ]): list<string>
+    var source_list: list<string> = [ ]
+
+    for source_glob in input_sources
+	var descend_glob: string
+	var run_filter: bool
+
+	if isdirectory(source_glob)
+	    if recurse
+		descend_glob = source_glob .. '/**'
+		run_filter = false
+	    else
+		descend_glob = source_glob .. '/*'
+		run_filter = true
+	    endif
+	else
+	    descend_glob = source_glob
+	    run_filter = true
+	endif
+
+	var file_list: list<string> = descend_glob->glob(true, true)
+
+	if !!filters
+	    Apply_Filters(file_list, filters)
+	endif
+
+	if run_filter
+	    file_list->filter((_, val) => !isdirectory(val))
+	endif
+
+	InPlaceAppendUnique(source_list, file_list)
+    endfor
+
+    return source_list
+enddef
+
+g:ProjectConfig_ExpandModuleSources = ExpandModuleSources
+
+# recieves list of either modules or module names, from the specified project,
+# and returns list of modules (translate the module names to modules when needed)
+export def LookupProjectModules(project: Project, module_name: any, ...module_names: list<any>): list<Module>
+    return [ module_name ]->extend(module_names)
+	->mapnew((_, name) => type(name) == v:t_string ? project.modules[name] : name)
+enddef
+
+# receives a list of either modules or module names, and return list of module names
+# (translate module to module name when needed)
+export def ListModuleNames(module: any, ...modules: list<any>): list<string>
+    return [ module ]->extend(modules)->mapnew((_, mod) => type(mod) == v:t_string ? mod : mod.name)
+enddef
+
 export enum TraverseMode
     ByLevel,
     InDepth
@@ -420,4 +477,5 @@ enddef
 
 g:ProjectConfig_ModuleProperties = ModuleProperties
 
-# defcompile
+#
+defcompile
