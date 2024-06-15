@@ -250,5 +250,4 @@ endclass
 
 ProjectConfig.Generators->add(CTagsGenerator.new())
 
-#
-defcompile
+# defcompile

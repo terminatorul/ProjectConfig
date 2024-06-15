@@ -156,49 +156,66 @@ class CScopeProperties
 
 	this.recurse = recurse->add(false)[0]
 	this.db = db_list->add('')[0]
+
+	if !!this.db
+	    if ProjectConfig.DirectorySeparator == '\'
+		this.db = this.db->tr('/', '\')
+	    endif
+
+	    this.db = Join_Path(this.db, 'cscope.' .. module.name .. '.out')
+	endif
     enddef
 endclass
 
 def Vim_Disconnect_CScope_Database(connections: string, db_file: string)
     if stridx(connections, db_file) >= 0
 	# Windows cannot recreate the cscope database file while it is
-	# used. This will also re-order cscope files if need to the
+	# in use. This will also re-order cscope files if needed, to the
 	# expected sequence
 	execute 'cscope kill ' .. fnameescape(db_file)
     endif
 enddef
 
-def Vim_Connect_CScope_Database(project: Project, exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
-    if exported == module.exported && !is_duplicate
-	var properties: CScopeProperties = CScopeProperties.new(module)
-	var output_file: string = properties.db
+def Vim_Connect_CScope_Database(project: Project, module: Module): void
+    var properties: CScopeProperties = CScopeProperties.new(module)
+    var output_file: string = properties.db
 
-	if empty(output_file)
-	    # no request for cscope generator for this module
-	    return
-	endif
+    if empty(output_file)
+	# no request for cscope generator for this module
+	return
+    endif
 
-	var lookup_args = LookupOptions->copy()->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].lookup_args)
+    var lookup_args = LookupOptions->copy()->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].lookup_args)
 
-	lookup_args->extend(properties.lookup_args)
+    lookup_args->extend(properties.lookup_args)
 
-	if empty(lookup_args)
-	    execute 'echo cscope add ' .. fnameescape(output_file)
-	else
-	    execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
-	endif
+    if empty(lookup_args)
+	execute 'echo cscope add ' .. fnameescape(output_file)
+    else
+	execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
     endif
 enddef
 
-def CScope_Source_Filter(glob_list: list<string>, regexp_list: list<string>): list<string>
-    var filters: list<string> = empty(glob_list) ? DefaultGlob[ : ] : glob_list[ : ]
+def VimConnectCScopeDatabase(project: Project, module: Module, ...modules: list<Module>): void
+    def Connect_CScope_Db_Func(exported: bool, level: number, is_duplicate: bool, current_module: Module, is_cyclic: bool): void
+	if !!level && exported == current_module.exported && !is_duplicate
+	    Vim_Connect_CScope_Database(project, current_module)
+	endif
+    enddef
+
+    var treeWalker: TreeWalker = TreeWalker.new(project, Connect_CScope_Db_Func, TreeWalker.FullDescend)
+
+    for exported in [ false, true ]
+	treeWalker.Traverse_ByLevel_TopDown(exported, module, modules)
+    endfor
+enddef
+
+def CScope_Source_Filters(glob_list: list<string>, regexp_list: list<string>): list<string>
+    var filters: list<string> = !!glob_list ? glob_list[ : ] : DefaultGlob[ : ]
 
     filters->map((_, val) => val->glob2regpat())
 
     return filters->extend(regexp_list)
-enddef
-
-def VimConnectCScopeDatabase()
 enddef
 
 def Update_NameFile(properties: CScopeProperties): string
@@ -211,7 +228,7 @@ def Update_NameFile(properties: CScopeProperties): string
 
     var namefile = basename .. '.files'
     var old_file_list = filereadable(namefile) ? namefile->readfile() : [ ]
-    var new_file_list = ProjectModel.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filter(properties.glob_list, properties.regexp_list))
+    var new_file_list = ProjectModel.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filters(properties.glob_list, properties.regexp_list))
 
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
@@ -225,37 +242,35 @@ def Update_NameFile(properties: CScopeProperties): string
     return namefile
 enddef
 
-def Build_CScope_Database(project: Project, connections: string, exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
-    if exported == module.exported && !is_duplicate
-	var properties: CScopeProperties = CScopeProperties.new(module)
-	var output_file: string = properties.db
+def Build_CScope_Database(project: Project, connections: string, module: Module): void
+    var properties: CScopeProperties = CScopeProperties.new(module)
+    var output_file: string = properties.db
 
-	if empty(output_file)
-	    # no request for cscope generator for this module
-	    return
-	endif
+    if empty(output_file)
+	# no request for cscope generator for this module
+	return
+    endif
 
-	var namefile: string = Update_NameFile(properties)
+    var namefile: string = Update_NameFile(properties)
 
-	if empty(namefile)
-	    return
-	endif
+    if empty(namefile)
+	return
+    endif
 
-	var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
-		    \ ->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].build_args)
-		    \ ->extend(properties.cscope_args)->extend(properties.build_args)
-		    \ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  dir ])->flattennew())
+    var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
+		\ ->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].build_args)
+		\ ->extend(properties.cscope_args)->extend(properties.build_args)
+		\ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  dir ])->flattennew())
 
-	cscope_command = BuildCommand(cscope_command, Shell_Escape(namefile), Shell_Escape(output_file))
+    cscope_command = BuildCommand(cscope_command, Shell_Escape(namefile), Shell_Escape(output_file))
 
-	Vim_Disconnect_CScope_Database(connections, output_file)
+    Vim_Disconnect_CScope_Database(connections, output_file)
 
-	execute '! echo ' .. cscope_command->join(' ')
+    execute '! echo ' .. cscope_command->join(' ')
 
-	if v:shell_error
-	    echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
-			\ .. ': shell command exited with code ' .. v:shell_error
-	endif
+    if v:shell_error
+	echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
+		    \ .. ': shell command exited with code ' .. v:shell_error
     endif
 enddef
 
@@ -263,23 +278,27 @@ export def BuildCScopeDatabase(exported_list: list<bool>, project_name: string, 
     if ProjectConfig.Projects->has_key(project_name)
 	var project: Project = g:ProjectConfig_Projects[project_name]
 	var connections: string = 'cscope show'->execute()
-	var Callback_Function: CallbackFunction = funcref(Build_CScope_Database, [ project, connections ])
-	var treeWalker: TreeWalker = TreeWalker.new(project, Callback_Function, TreeWalker.FullDescend)
 
-	var modules: list<Module> =
-	    [ module_name ]->extend(module_names)
-		->filter((_, name) => project.modules->has_key(name))
-		->mapnew((_, name) => project[name])
+	def Build_CScope_Db_Func(exported: bool, level: number, is_duplicate: bool, module: Module, is_cyclic: bool): void
+	    if !!level && exported == module.exported && !is_duplicate
+		Build_CScope_Database(project, connections, module)
+	    endif
+	enddef
 
-	if !empty(modules)
+	var treeWalker: TreeWalker = TreeWalker.new(project, Build_CScope_Db_Func, TreeWalker.FullDescend)
+	var modules: list<Module> = ProjectModel.LookupProjectModules->call([ project, module_name ]->extend(module_names))
+
+	if !!modules
 	    for exported in exported_list
-		treeWalker.Traverse_ByLevel_TopDown(exported, modules[1], modules[1 : ])
+		treeWalker.Traverse_ByLevel_ButtomUp(exported, modules[1], modules[1 : ])
 	    endfor
-	endif
 
-	# VimConnectCScopeDatabase()
+	    VimConnectCScopeDatabase->call([ project ]->extend(modules))
+	endif
     endif
 enddef
+
+echomsg typename(ProjectModel)
 
 g:ProjectConfig_BuildCScopeDatabase = BuildCScopeDatabase
 
@@ -353,7 +372,8 @@ class CScopeGenerator implements ProjectConfig.Generator
     enddef
 
     def LocalConfigInit(module: Module, ...modules: list<Module>): void
-	# VimConnectCScopeDatabases([ module ]->extend(modules))
+	var project: Project = ProjectConfig.AddCurrentProject()
+	VimConnectCScopeDatabase->call([ project, module ]->extend(modules))
     enddef
 
     def UpdateGlobalConfig(module: Module): void
@@ -371,5 +391,4 @@ endclass
 
 ProjectConfig.Generators->add(CScopeGenerator.new())
 
-#
-defcompile
+# defcompile

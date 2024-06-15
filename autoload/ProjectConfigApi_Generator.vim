@@ -427,5 +427,4 @@ enddef
 
 g:ProjectConfig_EnableProjectModules = EnableProjectModules
 
-#
-defcompile
+# defcompile

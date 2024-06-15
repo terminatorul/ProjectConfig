@@ -477,5 +477,4 @@ enddef
 
 g:ProjectConfig_ModuleProperties = ModuleProperties
 
-#
-defcompile
+# defcompile
