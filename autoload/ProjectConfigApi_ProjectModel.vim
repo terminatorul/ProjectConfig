@@ -305,7 +305,7 @@ export class DependencyWalker
 	this.StartTraversal(exported, TraverseDirection.TopDown, sibling_traversal)
 	this.target_level = [ module ]->extend(modules)->mapnew((_, mod) => this.ModuleTreeDepth(mod))->max()
 
-	while this.target_level
+	while !!this.target_level
 	    this.TraverseTargetLevel([ module ]->extend(modules))
 	    --this.target_level
 	endwhile
@@ -436,9 +436,9 @@ def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Mo
     var scope_list: list<dict<any>>
 
     if level == 1
-	scope_list = [ module->get('private', { }), module->get('public', { }) ]
+	scope_list = [ module['private'], module['public'] ]
     else
-	scope_list = [ module->get('public', { }), module->get('interface', { }) ]
+	scope_list = [ module['public'], module['interface'] ]
     endif
 
     var member_sequence: list<string> = type(members) == v:t_string ? members->split('\.') : members
@@ -469,8 +469,10 @@ def Default_Accessor(members: any, level: number, is_duplicate: bool, module: Mo
 enddef
 
 export def ModuleProperties(members: any, project: Project, module: Module, ...modules: list<Module>): list<PropertyList>
-    var member_list: list<string> = type(members) == v:t_list ? members : [ members ]
-    var accessor_fn: list<AccessorFunction> = member_list->mapnew((_, member) => funcref(Default_Accessor, [ member ]))
+    var member_list: list<any> = type(members) == v:t_list ? members : [ members ]
+    var accessor_fn: list<AccessorFunction> = member_list->mapnew((_, member) =>
+	(level: number, is_duplicate: bool, current_module: Module, is_cyclic: bool): PropertyList =>
+	    Default_Accessor(member, level, is_duplicate, current_module, is_cyclic))
 
     return CollectPropertiesWithReducer->call([ accessor_fn, null_list, project, module ]->extend(modules))
 enddef
