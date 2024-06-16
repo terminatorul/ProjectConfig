@@ -147,8 +147,8 @@ class CScopeProperties
 	\ 	 recurse,
 	\     this.src_list,
 	\     this.inc_list,
-	\ 	 db_list,
 	\ 	 enabled_list,
+	\ 	 db_list,
 	\     this.build_args,
 	\     this.lookup_args,
 	\     this.cscope_args,
@@ -247,6 +247,8 @@ def Update_NameFile(properties: CScopeProperties): string
     var old_file_list = has_namefile ? namefile->readfile() : [ ]
     var new_file_list = ProjectModel.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filters(properties.glob_list, properties.regexp_list))
 
+    echomsg "Module sources: " new_file_list ", source list: " properties.src_list ", glob: " properties.glob_list " " properties.regexp_list
+
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
 
@@ -277,8 +279,8 @@ def Build_CScope_Database(project: Project, connections: string, module: Module)
 
 	var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
 		    \ ->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].build_args)
-		    \ ->extend(properties.cscope_args)->extend(properties.build_args)
-		    \ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  dir ])->flattennew())
+		    \ ->extend(properties.cscope_args)->extend(properties.build_args->map((_, arg) => Shell_Escape(arg)))
+		    \ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  Shell_Escape(dir) ])->flattennew())
 
 	cscope_command = BuildCommand(cscope_command, Shell_Escape(namefile), Shell_Escape(output_file))
 
