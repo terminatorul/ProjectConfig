@@ -197,7 +197,7 @@ export class DependencyWalker
     def CheckExchangeDuplicate(module: Module): bool
 	if this.module_list->index(module.name) < 0
 	    if this.sibling_traversal == SiblingTraversal.LeftToRight
-		this.module_list->append(module.name)
+		this.module_list->add(module.name)
 	    else
 		this.module_list->insert(module.name)
 	    endif
@@ -291,12 +291,13 @@ export class DependencyWalker
 
     def Traverse_ByLevel_TopDown(exported: bool, module: Module, modules: list<Module>, sibling_traversal: SiblingTraversal = SiblingTraversal.LeftToRight): list<string>
 	this.StartTraversal(exported, TraverseDirection.TopDown, sibling_traversal)
+	this.target_level = 1
 
 	while this.TraverseTargetLevel([ module ]->extend(modules))
 	    ++this.target_level
 	endwhile
 
-	this.Callback_Function(exported, 0, v:false, null_dict, false)
+	this.Callback_Function(exported, 0, false, null_dict, false)
 
 	return this.module_list
     enddef

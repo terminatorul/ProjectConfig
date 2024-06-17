@@ -12,21 +12,17 @@ type CallbackFunction = ProjectModel.CallbackFunction
 export var BuildOptions: list<string> =
     g:->has_key('ProjectConfig_CScopeBuildOptions') ?
 	g:ProjectConfig_CScopeBuildOptions :
-	[ '-b', '-q' ]   # '-b' is always expected ("build database")
+	[ '-b', '-v', '-q' ]   # '-b' is always expected ("build database")
 
 export var LookupOptions: list<string> =
     g:->has_key('ProjectConfig_CScopeLookupOptions') ?
 	g:ProjectConfig_CScopeLookupOptions :
-	[ '-U' ]  # check file stamps (update cscope database)
-
-function g:BuildCScopeCommand(command_args, namefile, db_file)
-    return command_args->extend([ '-i', namefile, '-f', db_file ])
-endfuncti
+	[ ]  # check file stamps (update cscope database)
 
 # add namefile and output db file to cscope command line
 export var BuildCommand: func(list<string>, string, string): list<string> =
     g:->has_key('ProjectConfig_CScopeBuildCommand') ?
- 	(command_args: list<string>, namefile: string, db_file: string): list<string> => g:BuildCScopeCommand(command_args, namefile, db_file) :
+ 	(command_args: list<string>, namefile: string, db_file: string): list<string> => g:ProjectConfig_CScopeBuildCommand(command_args, namefile, db_file) :
 	(command_args: list<string>, namefile: string, db_file: string): list<string> => command_args->extend([ '-i', namefile, '-f', db_file ])
 
 
@@ -45,18 +41,18 @@ var ModuleProperties = ProjectModel.ModuleProperties
 #   *.tcc  C++ template source file
 #
 export var DefaultGlob: list<string> =
-	\ [
-	\    '.[chlyCGHL]',
-	\    '.bp',
-	\    '.ch',
-	\    '.sd',
-	\    '.cc',
-	\    '.hh',
-	\    '.tcc',
-	\    '.[ch]pp',
-	\    '.[ch]xx'
-	\ ]
-	\  ->mapnew((_, val) => '**/*' .. val)
+	[
+	   '.[chlyCGHL]',
+	   '.bp',
+	   '.ch',
+	   '.sd',
+	   '.cc',
+	   '.hh',
+	   '.tcc',
+	   '.[ch]pp',
+	   '.[ch]xx'
+	]
+	    ->mapnew((_, val) => '**/*' .. val)
 
 if g:->has_key('ProjectConfig_CScopeDefaultGlob')
     DefaultGlob = g:ProjectConfig_CScopeDefaultGlob
@@ -66,6 +62,13 @@ export var CScope_Directory: string = '.projectConfig'
 
 if g:->has_key('ProjectConfig_CScope_Directory')
     CScope_Directory = g:ProjectConfig_CScope_Directory
+endif
+
+# Will be pre-pended to PATH environment variable when running cscope
+export var Sort_Executable_Location: string
+
+if g:->has_key('ProjectConfig_SortExeLocation')
+    Sort_Executable_Location = g:ProjectConfig_SortExeLocation
 endif
 
 export var CScope_Path: string = exepath('cscope')
@@ -94,6 +97,24 @@ def Expand_CScope_Command_Line()
 
     CScope_Path = Shell_Escape(CScope_Path)
     CScope_Options->map((_, optarg) => Shell_Escape(optarg))
+
+    if ProjectConfig.HasWindows && empty(Sort_Executable_Location)
+	for exe_path in [ Join_Path($ProgramFiles, 'Git', 'usr', 'bin'), 'C:\msys64\usr\bin', Join_Path('ProgramFiles(x86)'->getenv(), 'GnuWin32', 'bin'), glob('C:\Ruby*-x64\msys64\usr\bin', false, true) ]->flattennew() # , glob('C:\cygwin*\bin')
+	    if Join_Path(exe_path, 'sort.exe')->filereadable()
+		Sort_Executable_Location = exe_path
+		break
+	    endif
+	endfor
+
+	if empty(Sort_Executable_Location) && BuildOptions->index('-q') >= 0 && !g:->has_key('ProjectConfig_CScopeBuildOptions')
+	    var sort_path = exepath('sort.exe')
+
+	    if sort_path ==? Join_Path($SystemRoot, 'sort.exe') || sort_path ==? Join_Path($SystemRoot, 'System32', 'sort.exe')
+		echomsg "GNU sort executable location not configured for cscope generator, removing default -q option"
+		BuildOptions->remove(BuildOptions->index('-q'))
+	    endif
+	endif
+    endif
 
     Expand_CScope_Command = (): void => {
     }
@@ -143,7 +164,7 @@ class CScopeProperties
 	var db_list: 	  list<string>
 	var enabled_list: list<bool>
 
-	  [
+	\ [
 	\ 	 recurse,
 	\     this.src_list,
 	\     this.inc_list,
@@ -185,8 +206,14 @@ class CScopeProperties
 	this.recurse = recurse->get(0, false)
 	this.db = db_list->get(0, '')
 
-	if empty(this.db) && this.enabled
-	    this.db = Join_Path(CScope_Directory, 'cscope.' .. module.name .. '.out')
+	if this.enabled
+	    if empty(this.db)
+		this.db = Join_Path(CScope_Directory, 'cscope.' .. module.name .. '.out')
+	    endif
+
+	    if empty(this.glob_list) && empty(this.regexp_list)
+		this.glob_list = DefaultGlob
+	    endif
 	endif
     enddef
 endclass
@@ -210,14 +237,14 @@ def Vim_Connect_CScope_Database(project: Project, module: Module): void
 	lookup_args->extend(properties.lookup_args)
 
 	if empty(lookup_args)
-	    execute 'echo cscope add ' .. fnameescape(output_file)
+	    execute 'cscope add ' .. fnameescape(output_file)
 	else
-	    execute 'echo cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
+	    execute 'cscope add ' .. fnameescape(output_file) .. ' . ' .. lookup_args->join(' ')
 	endif
     endif
 enddef
 
-def VimConnectCScopeDatabase(project: Project, module: Module, ...modules: list<Module>): void
+def VimConnectCScopeDatabase(external_list: list<bool>, project: Project, module: Module, ...modules: list<Module>): void
     def Connect_CScope_Db_Func(external: bool, level: number, is_duplicate: bool, current_module: Module, is_cyclic: bool): void
 	if !!level && external == current_module.external && !is_duplicate
 	    Vim_Connect_CScope_Database(project, current_module)
@@ -226,7 +253,7 @@ def VimConnectCScopeDatabase(project: Project, module: Module, ...modules: list<
 
     var treeWalker: TreeWalker = TreeWalker.new(project, Connect_CScope_Db_Func, TreeWalker.FullDescend)
 
-    for external in [ false, true ]
+    for external in external_list
 	treeWalker.Traverse_ByLevel_TopDown(external, module, modules)
     endfor
 enddef
@@ -247,8 +274,6 @@ def Update_NameFile(properties: CScopeProperties): string
     var old_file_list = has_namefile ? namefile->readfile() : [ ]
     var new_file_list = ProjectModel.ExpandModuleSources(properties.recurse, properties.src_list, CScope_Source_Filters(properties.glob_list, properties.regexp_list))
 
-    echomsg "Module sources: " new_file_list ", source list: " properties.src_list ", glob: " properties.glob_list " " properties.regexp_list
-
     if empty(new_file_list)
 	echomsg 'No C or C++ source files for cscope to run'
 
@@ -258,6 +283,8 @@ def Update_NameFile(properties: CScopeProperties): string
 
 	return ''
     endif
+
+    new_file_list->map((_, name) => (name =~ '\v[[:space:]]') ? '"' .. name->escape('"\')  .. '"' : name)
 
     if new_file_list != old_file_list
 	new_file_list->writefile(namefile)
@@ -277,18 +304,35 @@ def Build_CScope_Database(project: Project, connections: string, module: Module)
 	    return
 	endif
 
-	var cscope_command: list<string> = [ CScope_Path ]->extend(CScope_Options)->extend(BuildOptions)
-		    \ ->extend(project.config['cscope']->get('args', [ ]))->extend(project.config['cscope'].build_args)
-		    \ ->extend(properties.cscope_args)->extend(properties.build_args->map((_, arg) => Shell_Escape(arg)))
-		    \ ->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  Shell_Escape(dir) ])->flattennew())
+	var cscope_command: list<string> = [ CScope_Path ]
+		->extend(CScope_Options)
+		->extend(BuildOptions)
+		->extend(project.config['cscope']->get('args', [ ]))
+		->extend(project.config['cscope'].build_args)
+		->extend(properties.cscope_args->map((_, arg) => Shell_Escape(arg)))
+		->extend(properties.build_args->map((_, arg) => Shell_Escape(arg)))
+		->extend(properties.inc_list->mapnew((_, dir) => [ '-I',  Shell_Escape(dir) ])->flattennew())
 
 	cscope_command = BuildCommand(cscope_command, Shell_Escape(namefile), Shell_Escape(output_file))
 
 	Vim_Disconnect_CScope_Database(connections, output_file)
 
-	execute '! echo ' .. cscope_command->join(' ')
+	var orig_PATH: string
 
-	if v:shell_error
+	try
+	    if !!Sort_Executable_Location
+		orig_PATH = $PATH
+		$PATH = Sort_Executable_Location .. (ProjectConfig.HasWindows ? ';' : ':') .. $PATH
+	    endif
+
+	    execute '! ' .. cscope_command->join(' ')
+	finally
+	    if !!Sort_Executable_Location
+		$PATH = orig_PATH
+	    endif
+	endtry
+
+	if !!v:shell_error
 	    echoerr 'Error generating cscope database ' .. output_file .. ' for module ' .. module.name
 			\ .. ': shell command exited with code ' .. v:shell_error
 	endif
@@ -296,6 +340,8 @@ def Build_CScope_Database(project: Project, connections: string, module: Module)
 enddef
 
 export def BuildCScopeDatabase(external_list: list<bool>, project_name: string, module_name: string, ...module_names: list<string>): void
+    Expand_CScope_Command()
+
     if ProjectConfig.Projects->has_key(project_name)
 	var project: Project = g:ProjectConfig_Projects[project_name]
 	var connections: string = 'cscope show'->execute()
@@ -314,7 +360,7 @@ export def BuildCScopeDatabase(external_list: list<bool>, project_name: string, 
 		treeWalker.Traverse_ByLevel_ButtomUp(external, modules[0], modules[1 : ])
 	    endfor
 
-	    VimConnectCScopeDatabase->call([ project ]->extend(modules))
+	    VimConnectCScopeDatabase->call([ (external_list->len() > 1 ? [ false, true ] : external_list), project ]->extend(modules))
 	endif
     endif
 enddef
@@ -330,17 +376,24 @@ export def ClearCScopeDatabase(external_list: list<bool>, project_name: string, 
 		var properties: CScopeProperties = CScopeProperties.new(project, module)
 
 		if properties.enabled
-		    'cscope kill ' .. properties.db->fnameescape()
+		    echomsg "Stopping cscope connection to " properties.db->fnameescape()
+		    execute 'cscope kill ' .. properties.db->fnameescape()
 
 		    if properties.db =~ '\.out$'
 			for db_file in (properties.db[ : -4] .. '*')->glob(true, true, true)
-			    db_file->delete()
-			    echo 'Removed ' db_file
+			    if !!db_file->delete()
+				echo 'Unable to delete ' db_file
+			    else
+				echo 'Removed ' db_file
+			    endif
 			endfor
 		    else
-			for file_path in [ properties.db, properties.NameFile() ]
-			    file_path->delete()
-			    echo 'Removed ' file_path
+			for file_path in [ (properties.db .. '*')->glob(true, true, true), properties.NameFile() ]
+			    if !!file_path->delete()
+				echo 'Unable to delete ' file_path
+			    else
+				echo 'Removed ' file_path
+			    endif
 			endfor
 		    endif
 		endif
@@ -362,13 +415,16 @@ export def ClearCScopeDatabase(external_list: list<bool>, project_name: string, 
 
     for db_file in db_list
 	if db_file =~ '\v.*/cscope\..*\.out$'
-	    ('cscope kill ' .. db_file->fnameescape())->execute()
+	    execute 'cscope kill ' .. db_file->fnameescape()
 	endif
     endfor
 
     for db_file in db_list
-	db_file->delete()
-	echo 'Removed ' db_file
+	if !!db_file->delete()
+	    echo 'Unable to delete ' db_file
+	else
+	    echo 'Removed ' db_file
+	endif
     endfor
 enddef
 
@@ -382,8 +438,8 @@ export def EnableReScopeCommand(module_name: any, ...module_names: list<any>): v
 	.. "'"
 
     execute "command ReScope" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildCScopeDatabase([ false ], " .. arglist .. ")"
-    execute "command ReScope" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildCScopeDatabase([ false, true ], " .. arglist .. ")"
-    execute "command ReScopeClear" .. g:ProjectConfig_Project .. " call g:ProjectConfig_ClearCScopeDatabase([false, true], " .. arglist .. ")"
+    execute "command ReScope" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildCScopeDatabase([ true, false ], " .. arglist .. ")"
+    execute "command ReScopeClear" .. g:ProjectConfig_Project .. " call g:ProjectConfig_ClearCScopeDatabase([ true, false ], " .. arglist .. ")"
 enddef
 
 def UpdateProjectConfig(project: Project)
@@ -433,7 +489,7 @@ class CScopeGenerator implements ProjectConfig.Generator
 
     def LocalConfigInit(module: Module, ...modules: list<Module>): void
 	var project: Project = ProjectConfig.AddCurrentProject()
-	VimConnectCScopeDatabase->call([ project, module ]->extend(modules))
+	VimConnectCScopeDatabase->call([ [false, true ], project, module ]->extend(modules))
     enddef
 
     def UpdateGlobalConfig(module: Module): void

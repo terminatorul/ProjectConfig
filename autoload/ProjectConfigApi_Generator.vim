@@ -218,8 +218,6 @@ export def AddModuleAutoCmd(module: Module, commands: any, pattern: list<string>
 	endfor
     endif
 
-    # echomsg auto_cmd
-
     [ auto_cmd ]->autocmd_add()
 enddef
 
