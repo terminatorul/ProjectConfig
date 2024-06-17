@@ -79,6 +79,7 @@ def Build_Module_Tags(project: Project, module: Module): void
     var ctags_command_list = [ CTags_Path ] + CTags_Options
 	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(module['private'].tags) ]
 	 + List_Append_Unique(module['private'].src, module['public'].src, module['private'].inc, module['public'].inc)
+		->mapnew((_, src) => src->glob(true, true, true))->flattennew(1)
 		->mapnew((_, optarg) => Shell_Escape(optarg))
 
     var tags_dir = fnamemodify(module['private'].tags, ':h')
