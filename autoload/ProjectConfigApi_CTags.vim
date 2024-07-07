@@ -5,8 +5,11 @@ import './ProjectConfigApi_Generator.vim' as ProjectConfig
 
 type Module  = ProjectConfig.Module
 type Project = ProjectConfig.Project
+type ShellEscapeTarget = ProjectConfig.ShellEscapeTarget
 
 var ListModuleNames = ProjectModel.ListModuleNames
+
+export var TagsExtraSort = true
 
 export var CxxOptions: list<string> =
     [
@@ -37,6 +40,7 @@ var Join_Path = ProjectConfig.JoinPath
 var Shell_Escape = ProjectConfig.ShellEscape
 var List_Append_Unique = ProjectConfig.ListAppendUnique
 
+export var ReadTags_Command: list<string>
 export var CTags_Path: string
 export var CTags_Options: list<string>
 export var CTags_Directory: string = '.projectConfig'
@@ -61,6 +65,30 @@ def Expand_CTags_Command_Line(): void
 	CTags_Options = [ ]
     endif
 
+    if g:->has_key('ProjectConfig_ReadTags_Command')
+	if type(g:ProjectConfig_ReadTags_Command) == v:t_list
+	    ReadTags_Command = g:ProjectConfig_ReadTags_Command
+	else
+	    ReadTags_Command = [ g:ProjectConfig_ReadTags_Command ]
+	endif
+
+	ReadTags_Command[0] = exepath(ReadTags_Command[0])
+    else
+	var readTagsExe: list<string> = (CTags_Path->fnamemodify('%:h') .. '/readtags' .. (ProjectConfig.HasWindows ? '.exe' : ''))->glob(true, true)
+
+	if !!readTagsExe
+	    ReadTags_Command = readTagsExe[0 : 0]
+	else
+	    readTagsExe = [ exepath('readtags') ]
+
+	    if !!readTagsExe && !!readTagsExe[0]
+		ReadTags_Command = readTagsExe[0 : 0]
+	    endif
+	endif
+    endif
+
+    ReadTags_Command->map((_, optarg) => Shell_Escape(optarg))
+
     if g:->has_key('ProjectConfig_CTags_Options')
 	CTags_Options->extend(g:ProjectConfig_CTags_Options)
     endif
@@ -76,18 +104,43 @@ enddef
 Expand_CTags_Command = Expand_CTags_Command_Line
 
 def Build_Module_Tags(project: Project, module: Module): void
-    var ctags_command_list = [ CTags_Path ] + CTags_Options
-	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(module['private'].tags) ]
+    var tag_sort: bool = module['private']->get('tag_extra_sort', module['public']->get('tag_extra_sort', project.config->get('tag_extra_sort', g:->get('ProjectConfig_CTagsExtraSort', TagsExtraSort))))
+    var tags_file_name: string = module['private'].tags .. (tag_sort && !!ReadTags_Command ? '.unsorted' : '')
+    var ctags_command_list: list<string> = [ CTags_Path ] + CTags_Options
+	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(tags_file_name) ]
 	 + List_Append_Unique(module['private'].src, module['public'].src, module['private'].inc, module['public'].inc)
 		->mapnew((_, src) => src->glob(true, true, true))->flattennew(1)
-		->mapnew((_, optarg) => Shell_Escape(optarg))
+		->mapnew((_, optarg) => Shell_Escape(Shell_Escape(optarg), ShellEscapeTarget.VimEscape))
 
-    var tags_dir = fnamemodify(module['private'].tags, ':h')
-    call mkdir(tags_dir, 'p')
+    module['private']['tags']->fnamemodify(':h')->mkdir('p')
+
     execute '!' .. ctags_command_list->join(' ')
 
     if v:shell_error
 	echoerr 'Error generating tags for module ' .. module.name .. ': shell command exited with code ' .. v:shell_error
+    else
+	if tag_sort && !!ReadTags_Command
+	    var readtags_command_line: list<string> = ReadTags_Command +
+		[
+		    '--extension-fields', '--line-number', '--tag-file', tags_file_name, '--with-pseudo-tags',
+		    '--sorter', '(if (eq? $name &name) (cond ((and (or (eq? $kind "p") (eq? $kind "prototype")) (or (eq? &kind "f") (eq? &kind "function"))) 1) ((and (or (eq? $kind "f") (eq? $kind "function")) (or (eq? &kind "p") (eq? &kind "prototype"))) -1) (#t 0)) (<> $name &name))',
+		    '--list'
+		]
+		    ->map((_, optarg) => Shell_Escape(Shell_Escape(optarg, ShellEscapeTarget.WinAPI_CmdEscape), ShellEscapeTarget.VimEscape))
+		+
+		[ '>', Shell_Escape(module['private'].tags) ]
+
+	    execute '!' .. readtags_command_line->join(' ')
+
+	    if v:shell_error
+		echoerr 'Error sorting tags for module ' .. module.name .. ': readtags shell command exited with code ' .. v:shell_error
+		rename(tags_file_name, module['private']['tags'])   # keep unsorted tags file if sorting has failed
+	    else
+		if !!tags_file_name->glob(true, true, true) && !!delete(tags_file_name)
+		    echoerr "Removing temporary file " .. tags_file_name .. " failed."
+		endif
+	    endif
+	endif
     endif
 enddef
 
@@ -131,7 +184,7 @@ enddef
 
 g:ProjectConfig_BuildTags = BuildTags
 
-export def BuildAllTags(project_name: string, module_name: string, module_names: list<string>): void
+export def BuildAllTags(project_name: string, module_name: string, ...module_names: list<string>): void
     BuildTagsTree->call([ true, project_name, module_name ]->extend(module_names))
 enddef
 
@@ -139,8 +192,8 @@ g:ProjectConfig_BuildAllTags = BuildAllTags
 
 export def EnableReTagCommand(module_name: any, ...module_names: list<any>): void
     var arglist = "'" .. (<list<string>>[ g:ProjectConfig_Project ])->extend(ListModuleNames->call([ module_name ]->extend(module_names)))->join("', '") .. "'"
-    execute "command ReTag" .. g:ProjectConfig_Project .. " call g:ProjectConfig_BuildTags(" .. arglist .. ")"
-    execute "command ReTag" .. g:ProjectConfig_Project .. "All call g:ProjectConfig_BuildAllTags(" .. arglist .. ")"
+    execute "command ReTag" .. g:ProjectConfig_Project .. " call BuildTags(" .. arglist .. ")"
+    execute "command ReTag" .. g:ProjectConfig_Project .. "All BuildAllTags(" .. arglist .. ")"
 enddef
 
 g:ProjectConfig_EnableReTagCommand = EnableReTagCommand
@@ -230,14 +283,6 @@ class CTagsGenerator implements ProjectConfig.Generator
 	var tags_path: string = tags_list
 		->mapnew((_, val) => val->fnameescape()->substitute('[ \\]', '\\\0', 'g')->substitute('\V,', '\\\\,', 'g'))
 		->join(',')
-
-# def ExpandTagBarPaths()
-#     let g:tagbar_ctags_bin = exepath('ctags')   " Cache the location of ctags.exe on $PATH
-#
-#     if !len(g:tagbar_ctags_bin)
-# 	unlet g:tagbar_ctags_bin
-#     endif
-# enddef
 
 	var vim_cmd_set_tags: string  = 'setlocal tags^=' .. tags_path
 

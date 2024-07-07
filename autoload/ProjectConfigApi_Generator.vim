@@ -267,7 +267,36 @@ enddef
 
 g:ProjectConfig_ShowPath = ShowPath
 
-export def ShellEscape(param: string): string
+export enum ShellEscapeTarget
+    # Use Vim shellescape(), which doubles existing double-quote characters
+    # within a quoted argument, but for Windows also moves trailing backslashes
+    # outside the closing quote.
+    Default,
+
+    # Escape double quotes within a quoted argument with a backslash,
+    # and doubles backslashe characterss aready present right before the quote
+    WinAPI,
+
+    # Escape double quotes within a quoted argument by duplicating them, with
+    # trailing backslashes moved ouside the closing quote. Usually not working
+    # if backslashes are present right before the quote, but still needed for
+    # running .cmd / .bat scripts.
+    DuplicateQuotes,
+
+    # Use caret character (^) to escape cmd special characters that are not already
+    # within double quotes (existing backslashes have no effect on double quotes,
+    # quotes are still counted even if they appear to be escaped)
+    CmdEscape,
+
+    # Escapes !, # and % characters with a single backslash (any preceding
+    # backslashes are ignored). Used for Vim ! command (shell execute )
+    VimEscape,
+
+    # Applies WinAPI quoting first, and escapes the result using CmdEscape after
+    WinAPI_CmdEscape
+endenum
+
+def ShellEscape_Default(param: string): string
     if match(param, '\v^[a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/]+$') >= 0
 	return param
     endif
@@ -277,10 +306,10 @@ export def ShellEscape(param: string): string
     # escapes the double-quote character
 
     if HasWindows
-	var arg_len: number = param->len() - 1
+	var arg_len: number = param->strchars() - 1
 
 	while arg_len >= 0 && param[arg_len] == '\'
-	    arg_len = arg_len - 1
+	    --arg_len
 	endwhile
 
 	if arg_len >= 0
@@ -290,6 +319,92 @@ export def ShellEscape(param: string): string
 
     return param->shellescape()
 enddef
+
+def ShellEscape_VimEscape(param: string): string
+    return param->escape('#!%')
+enddef
+
+# Backslash followd by double-quote (\") can not be safely quoted this way,
+# but this mode is still needed for .cmd / .bat files
+def ShellEscape_DuplicateQuotes(param: string): string
+    if match(param, '\v^[a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/]+$') >= 0
+	return param
+    endif
+
+    var arg_len: number = param->strchars() - 1
+
+    while arg_len >= 0 && param[arg_len] == '\'
+	--arg_len
+    endwhile
+
+    return '"' .. param[0 : arg_len]->substitute('\v\"', '""', 'g') .. '"' .. param[arg_len + 1 : ]
+enddef
+
+def ShellEscape_WinAPI(param: string): string
+    if match(param, '\v^[a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/]+$') >= 0
+	return param
+    endif
+
+    return '"' .. param->substitute('\v(\\*)\"', '\1\1\\\"', 'g')->substitute('\v(\\+)$', '\1\1', '') .. '"'
+enddef
+
+def ShellEscape_Cmd(param: string): string
+    var quoted_param: string
+    var [ base_index: number, is_quoted: bool, quote_index: number ] = [ 0, false, param->stridx('"') ]
+
+    while quote_index >= 0
+	if quote_index > base_index
+	    if is_quoted
+		quoted_param ..= param[base_index : quote_index - 1]
+	    else
+		quoted_param ..= param[base_index : quote_index - 1]->substitute('\v[^a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/ ]', '^\0', 'g')
+	    endif
+	endif
+
+	quoted_param ..= '"'
+	[ base_index, is_quoted, quote_index ] = [ quote_index + 1,  !is_quoted, param->stridx('"', quote_index + 1) ]
+    endwhile
+
+    if is_quoted
+	quoted_param = quoted_param->substitute('\v\"$', '^"', '')
+    endif
+
+    quoted_param ..= param[base_index : ]->substitute('\v[^a-zA-Z0-9_\.\,\+\-\=\#\@\:\\\/ ]', '^\0', 'g')
+
+    return quoted_param
+enddef
+
+export def ShellEscape(param: string, target: ShellEscapeTarget = ShellEscapeTarget.Default): string
+    if target == ShellEscapeTarget.VimEscape
+	return ShellEscape_VimEscape(param)
+    elseif target == ShellEscapeTarget.Default || !HasWindows
+	return ShellEscape_Default(param)
+    elseif target == ShellEscapeTarget.WinAPI
+	return ShellEscape_WinAPI(param)
+    elseif target == ShellEscapeTarget.CmdEscape
+	return ShellEscape_Cmd(param)
+    elseif target == ShellEscapeTarget.WinAPI_CmdEscape
+	return ShellEscape_Cmd(ShellEscape_WinAPI(param))
+    endif
+
+    throw "ShellEscape: bad ShellEscapeTarget argument"
+enddef
+
+# const test_strings: list<string> = [
+# 	'(if (eq? $name &name) (cond ((and (eq? $kind "p") (eq? &kind "f")) 1)',
+# 	'(delta " flayer)',
+# 	'(d| & ) ] {elta " flayer)',
+# 	'(delta " fl|a&y(e}r)',
+# 	'(delta \" flayer)',
+# 	'(delta \" flayer\\)',
+# 	'(delta \" ""flayer\\)',
+# 	'(delta \" ""flayer\\")',
+# 	'("delta \" ""flayer\\")'
+# ]
+#
+# for test_str in test_strings
+#     echomsg test_str .. ' => ' .. ShellEscape(test_str, ShellEscapeTarget.WinAPI_CmdEscape)
+# endfor
 
 g:ProjectConfig_ShellEscape = ShellEscape
 
