@@ -327,7 +327,7 @@ def Build_CScope_Database(project: Project, connections: string, module: Module)
 
 	    execute '! ' .. cscope_command->join(' ')
 	finally
-	    if !!Sort_Executable_Location
+	    if !!Sort_Executable_Location && !!orig_PATH
 		$PATH = orig_PATH
 	    endif
 	endtry
@@ -382,17 +382,17 @@ export def ClearCScopeDatabase(external_list: list<bool>, project_name: string, 
 		    if properties.db =~ '\.out$'
 			for db_file in (properties.db[ : -4] .. '*')->glob(true, true, true)
 			    if !!db_file->delete()
-				echo 'Unable to delete ' db_file
+				echomsg 'Unable to delete ' db_file
 			    else
-				echo 'Removed ' db_file
+				echomsg 'Removed ' db_file
 			    endif
 			endfor
 		    else
 			for file_path in [ (properties.db .. '*')->glob(true, true, true), properties.NameFile() ]
 			    if !!file_path->delete()
-				echo 'Unable to delete ' file_path
+				echomsg 'Unable to delete ' file_path
 			    else
-				echo 'Removed ' file_path
+				echomsg 'Removed ' file_path
 			    endif
 			endfor
 		    endif

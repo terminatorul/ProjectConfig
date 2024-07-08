@@ -115,7 +115,7 @@ export def FindLoad(project_name: string)
 	if configData.project_name == project_name && !!configData.directory_name->strlen()
 	    configData.directory_name->chdir()
 
-	    if !!g:ProjectConfig_NERDTreeIntegration && exists(':NERDTreeCWD')
+	    if !!g:ProjectConfig_NERDTreeIntegration && exists(':NERDTreeCWD') == 2
 		:NERDTreeCWD
 	    else
 		edit .
@@ -164,6 +164,7 @@ export def SetScript(project_name_arg: string, ...arg_list: list<any>): void
     var project_name: string = !!arg_list->len() ? project_name_arg : project_name_arg->fnamemodify(':t:r')
     var project_script: string
     var file_script: string
+    var resolve_directory: bool = true
 
     if arg_list->len() > 1
 	project_script = arg_list[1]
@@ -174,6 +175,10 @@ export def SetScript(project_name_arg: string, ...arg_list: list<any>): void
 
 	if arg_list->len() > 3
 	    keep_pwd = !!arg_list[3]
+	endif
+
+	if arg_list->len() > 4
+	    resolve_directory = !!arg_list[4]
 	endif
     else
 	if (has('win32') || has('win64')) && isdirectory(expand('~\vimfiles'))
@@ -193,6 +198,10 @@ export def SetScript(project_name_arg: string, ...arg_list: list<any>): void
 		file_script = ''
 	    endif
 	endif
+    endif
+
+    if resolve_directory
+	directory_name = directory_name->resolve()
     endif
 
     ProjectConfigScript->add(

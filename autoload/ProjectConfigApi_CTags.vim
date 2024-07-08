@@ -49,6 +49,11 @@ if g:->has_key('ProjectConfig_Tags_Directory')
     CTags_Directory = g:ProjectConfig_Tags_Directory
 endif
 
+export var BuildReadTagsSortCommand: func(list<string>, string, ...list<string>): list<string> =
+    g:->has_key('ProjectConfig_ReadTagsSortCommand') ?
+	(command_line: list<string>, tagfile: string, ...other_args: list<string>) => g:ProjectConfig_ReadTagsSortCommand->call([ command_line, tagfile ]->extend(other_args)) :
+	(command_line: list<string>, tagfile: string, ...other_args: list<string>) => command_line->extend([ '--tag-file', tagfile ])->extend(other_args)
+
 var Expand_CTags_Command: func(): void
 
 def Expand_CTags_Command_Line(): void
@@ -116,28 +121,27 @@ def Build_Module_Tags(project: Project, module: Module): void
 
     execute '!' .. ctags_command_list->join(' ')
 
-    if v:shell_error
+    if !!v:shell_error
 	echoerr 'Error generating tags for module ' .. module.name .. ': shell command exited with code ' .. v:shell_error
     else
 	if tag_sort && !!ReadTags_Command
-	    var readtags_command_line: list<string> = ReadTags_Command +
-		[
-		    '--extension-fields', '--line-number', '--tag-file', tags_file_name, '--with-pseudo-tags',
+	    var readtags_command_line: list<string> = BuildReadTagsSortCommand(ReadTags_Command + [ '--extension-fields', '--line-number', '--escape-output' ], tags_file_name,
+		    '--with-pseudo-tags',
 		    '--sorter', '(if (eq? $name &name) (cond ((and (or (eq? $kind "p") (eq? $kind "prototype")) (or (eq? &kind "f") (eq? &kind "function"))) 1) ((and (or (eq? $kind "f") (eq? $kind "function")) (or (eq? &kind "p") (eq? &kind "prototype"))) -1) (#t 0)) (<> $name &name))',
 		    '--list'
-		]
-		    ->map((_, optarg) => Shell_Escape(Shell_Escape(optarg, ShellEscapeTarget.WinAPI_CmdEscape), ShellEscapeTarget.VimEscape))
+		    )
+			->map((_, optarg) => Shell_Escape(Shell_Escape(optarg, ShellEscapeTarget.WinAPI_CmdEscape), ShellEscapeTarget.VimEscape))
 		+
 		[ '>', Shell_Escape(module['private'].tags) ]
 
 	    execute '!' .. readtags_command_line->join(' ')
 
-	    if v:shell_error
-		echoerr 'Error sorting tags for module ' .. module.name .. ': readtags shell command exited with code ' .. v:shell_error
+	    if !!v:shell_error
+		echomsg 'Error sorting tags for module ' .. module.name .. ': readtags shell command exited with code ' .. v:shell_error
 		rename(tags_file_name, module['private']['tags'])   # keep unsorted tags file if sorting has failed
 	    else
-		if !!tags_file_name->glob(true, true, true) && !!delete(tags_file_name)
-		    echoerr "Removing temporary file " .. tags_file_name .. " failed."
+		if !!delete(tags_file_name)
+		    echomsg "Removing temporary file " .. tags_file_name .. " failed."
 		endif
 	    endif
 	endif

@@ -536,6 +536,8 @@ export def EnableProjectModules(module_name: any, ...module_names: list<any>): v
     for current_module in modules
 	LocalUpdate_InDepth_ButtomUp_ReTraverse(Generators, processed_modules, current_module)
     endfor
+
+    lockvar! Projects[g:ProjectConfig_Project]
 enddef
 
 g:ProjectConfig_EnableProjectModules = EnableProjectModules
