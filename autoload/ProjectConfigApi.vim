@@ -5,6 +5,7 @@ import './ProjectConfigApi_Generator.vim' as ConfigApi
 import './ProjectConfigApi_VimPath.vim' as VimPath
 import './ProjectConfigApi_CTags.vim' as CTags
 import './ProjectConfigApi_CScope.vim' as CScope
+import './ProjectConfigApi_Global.vim' as Global
 
 export type Property = ProjectModel.Property
 export type Module = ProjectModel.Module
