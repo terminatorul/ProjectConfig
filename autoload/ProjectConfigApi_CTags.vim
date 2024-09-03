@@ -11,11 +11,12 @@ var ListModuleNames = ProjectModel.ListModuleNames
 
 export var TagsExtraSort = true
 
-export var CxxOptions: list<string> =
-    [
-	'--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
-	'--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
-    ]
+export var CxxOptions: func(): list<string> =
+    () =>
+	[
+	    '--recurse', '--languages=+C,C++', '--kinds-C=+px', '--kinds-C++=+px',
+	    '--fields=+lzkKErSt', '--extras=+{qualified}{inputFile}{reference}', '--totals'
+	]
 
 export var PhpOptions: list<string> =
     [
@@ -111,11 +112,18 @@ Expand_CTags_Command = Expand_CTags_Command_Line
 def Build_Module_Tags(project: Project, module: Module): void
     var tag_sort: bool = module['private']->get('tag_extra_sort', module['public']->get('tag_extra_sort', project.config->get('tag_extra_sort', g:->get('ProjectConfig_CTagsExtraSort', TagsExtraSort))))
     var tags_file_name: string = module['private'].tags .. (tag_sort && !!ReadTags_Command ? '.unsorted' : '')
-    var ctags_command_list: list<string> = [ CTags_Path ] + CTags_Options
-	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(tags_file_name) ]
-	 + List_Append_Unique(module['private'].src, module['public'].src, module['private'].inc, module['public'].inc)
+    var source_list: list<string> = List_Append_Unique(module['private'].src, module['public'].src, module['private'].inc, module['public'].inc)
 		->mapnew((_, src) => src->glob(true, true, true))->flattennew(1)
 		->mapnew((_, optarg) => Shell_Escape(Shell_Escape(optarg), ShellEscapeTarget.VimEscape))
+
+    if source_list->empty()
+	echoerr "Missing ctags input files or directories for module " .. module.name
+	return
+    endif
+
+    var ctags_command_list: list<string> = [ CTags_Path ] + CTags_Options
+	 + project.config.ctags_args + module['private'].ctags_args + module['public'].ctags_args + [ '-f', Shell_Escape(tags_file_name) ]
+	 + source_list
 
     module['private']['tags']->fnamemodify(':h')->mkdir('p')
 
