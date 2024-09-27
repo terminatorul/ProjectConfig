@@ -127,7 +127,12 @@ const rhs_is_header: string = 'or (eq? &kind "h") (eq? &kind "header")'
 const lhs_is_file_and_rhs_is_header: string = $'and ({lhs_is_file}) ({rhs_is_header})'
 const lhs_is_header_and_rhs_is_file: string = $'and ({lhs_is_header}) ({rhs_is_file})'
 
-const sort_condition: string = $'cond (({lhs_is_proto_and_rhs_is_func}) 1) (({lhs_is_header_and_rhs_is_file}) 1) (({lhs_is_func_and_rhs_is_proto}) -1) (({lhs_is_file_and_rhs_is_header}) -1) (#t 0)'
+const sort_condition: string = $'cond ' ..
+    $'(({lhs_is_proto_and_rhs_is_func} )  1) ' ..
+    $'(({lhs_is_header_and_rhs_is_file})  1) ' ..
+    $'(({lhs_is_func_and_rhs_is_proto} ) -1) ' ..
+    $'(({lhs_is_file_and_rhs_is_header}) -1) ' ..
+    $'(#t 0)'
 
 def Build_Module_Tags(project: Project, module: Module): void
     var tag_sort: bool = module['private']->get('tag_extra_sort', module['public']->get('tag_extra_sort', project.config->get('tag_extra_sort', g:->get('ProjectConfig_CTagsExtraSort', TagsExtraSort))))
